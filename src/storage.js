@@ -1,8 +1,10 @@
+import { cloudEnabled, cloudStore, cloudSaveStore } from "./cloud.js";
 import { localDateKey, dayGap } from "./local-time.js";
 const KEY = "mathmaster-igcse-v1";
 const today = localDateKey;
 
 export function readStore() {
+  if (cloudEnabled) return cloudStore();
   try {
     const stored = JSON.parse(localStorage.getItem(KEY) || "{}");
     return { users: Array.isArray(stored.users) ? stored.users : [], currentEmail: stored.currentEmail || null, content: stored.content || { questions: [], lessons: [] } };
@@ -13,6 +15,7 @@ export function readStore() {
 }
 
 export function writeStore(store) {
+  if (cloudEnabled) { cloudSaveStore(store); return; }
   try {
     localStorage.setItem(KEY, JSON.stringify(store));
   } catch (error) {

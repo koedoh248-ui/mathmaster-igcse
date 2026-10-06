@@ -1,3 +1,4 @@
+import { cloudEnabled, cloudNeedsPassword, cloudResetEmail, cloudSetPassword, initializeCloud, cloudSignIn, cloudSignUp, cloudSignOut, cloudChangePassword, cloudStatus, onCloudStatus, flushCloud, refreshCloud } from "./cloud.js";
 import { currentStreak, clockLabel } from "./local-time.js";
 import { streakFlame } from "./streak-flame.js";
 import { assessTypedWorking, assessOfficialWorking, schemeReference } from "./marking-assistant.js";
@@ -233,7 +234,7 @@ function shell(content) {
         <div class="sidebar-bottom">
           <div class="streak-mini"><span data-live-flame="navigation">${streakFlame(currentStreak(user.profile), "navigation")}</span><span><strong><span data-live-streak>${currentStreak(user.profile)}</span> day streak</strong><small>Keep the momentum going</small></span></div>
           <a class="profile-mini" href="#Profile"><span class="avatar">${esc(initials(user.profile.name))}</span><span><strong>${esc(user.profile.name)}</strong><small>Level ${user.profile.level} learner</small></span><span class="profile-dots">···</span></a>
-          <div class="offline-note"><span class="online-dot"></span> Your learning is saved on this device</div>
+          <div class="offline-note"><span class="online-dot"></span> ${cloudEnabled ? "Your learning syncs to your account" : "Your learning is saved on this device"}</div>
         </div>
       </aside>
       <button class="sidebar-peek" id="sidebar-peek" aria-controls="sidebar" aria-expanded="false" aria-label="Show navigation" title="Move here or click to open the menu"><span aria-hidden="true">›</span><span aria-hidden="true">Menu</span></button>
@@ -251,11 +252,11 @@ function shell(content) {
 function adminShell(content) {
   const tab = window.adminTab || "dashboard";
   const destinations = [["dashboard", "⌂", "Dashboard"], ["questions", "▤", "Question bank"], ["lessons", "▣", "Lessons"], ["users", "○", "Learners"], ["create", "+", "Create content"], ["support", "☏", "Help center"]];
-  app.innerHTML = `<div class="app-shell admin-shell"><aside class="sidebar" id="sidebar"><a class="brand" href="#Admin"><span class="brand-mark">M</span><span>MathMaster<small>ADMIN STUDIO</small></span></a><div class="nav-label">MANAGE</div><nav class="main-nav">${destinations.map(([key, icon, name]) => `<button class="nav-link ${tab === key ? "active" : ""}" data-admin-tab="${key}"><span class="nav-icon">${icon}</span>${name}</button>`).join("")}</nav><div class="sidebar-bottom"><div class="profile-mini"><span class="avatar">${esc(initials(user.profile.name))}</span><span><strong>${esc(user.profile.name)}</strong><small>Administrator</small></span></div><a class="nav-link" href="./index.html" target="_blank" rel="noopener noreferrer"><span class="nav-icon">↗</span>Student site</a><button class="text-button" data-action="logout">Sign out of admin</button></div></aside><button class="mobile-overlay" id="close-menu" aria-label="Close menu"></button><main class="main-area"><header class="topbar"><button class="icon-button menu-toggle" id="menu-toggle" aria-label="Open admin navigation">☰</button><div class="breadcrumb">Admin studio <span>/</span><strong>${destinations.find(([key]) => key === tab)?.[2] || "Dashboard"}</strong></div>${liveClockMarkup()}<span class="progress-pill">Administrator</span></header><div class="page-content">${content}</div><footer class="footer"><span>MathMaster · Admin area</span><span>Content changes are saved on this device</span></footer></main></div>`;
+  app.innerHTML = `<div class="app-shell admin-shell"><aside class="sidebar" id="sidebar"><a class="brand" href="#Admin"><span class="brand-mark">M</span><span>MathMaster<small>ADMIN STUDIO</small></span></a><div class="nav-label">MANAGE</div><nav class="main-nav">${destinations.map(([key, icon, name]) => `<button class="nav-link ${tab === key ? "active" : ""}" data-admin-tab="${key}"><span class="nav-icon">${icon}</span>${name}</button>`).join("")}</nav><div class="sidebar-bottom"><div class="profile-mini"><span class="avatar">${esc(initials(user.profile.name))}</span><span><strong>${esc(user.profile.name)}</strong><small>Administrator</small></span></div><a class="nav-link" href="./index.html" target="_blank" rel="noopener noreferrer"><span class="nav-icon">↗</span>Student site</a><button class="text-button" data-action="logout">Sign out of admin</button></div></aside><button class="mobile-overlay" id="close-menu" aria-label="Close menu"></button><main class="main-area"><header class="topbar"><button class="icon-button menu-toggle" id="menu-toggle" aria-label="Open admin navigation">☰</button><div class="breadcrumb">Admin studio <span>/</span><strong>${destinations.find(([key]) => key === tab)?.[2] || "Dashboard"}</strong></div>${liveClockMarkup()}<span class="progress-pill">Administrator</span></header><div class="page-content">${content}</div><footer class="footer"><span>MathMaster · Admin area</span><span>${cloudEnabled ? "Content is shared with all learners" : "Content changes are saved on this device"}</span></footer></main></div>`;
 }
 
 function renderAdminWelcome() {
-  app.innerHTML = `<main class="admin-welcome"><section class="section-card admin-login-card"><a class="brand" href="./admin.html"><span class="brand-mark">M</span><span>MathMaster<small>ADMIN STUDIO</small></span></a><div class="eyebrow">ADMINISTRATOR ACCESS</div><h1>Manage your maths platform.</h1><p class="muted">Sign in to manage questions, lessons and learner accounts.</p><form id="login-form" class="form-stack"><label>Admin email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="8" required></label><button class="button button-primary">Sign in to admin →</button></form><button class="button button-secondary button-wide" data-action="demo-admin">Open local admin preview →</button><p class="privacy-note">Admin sessions are separate from student sessions on this device.</p><a class="subtle-link" href="./index.html">Go to the student site ↗</a></section></main>`;
+  app.innerHTML = `<main class="admin-welcome"><section class="section-card admin-login-card"><a class="brand" href="./admin.html"><span class="brand-mark">M</span><span>MathMaster<small>ADMIN STUDIO</small></span></a><div class="eyebrow">ADMINISTRATOR ACCESS</div><h1>Manage your maths platform.</h1><p class="muted">Sign in to manage questions, lessons and learner accounts.</p><form id="login-form" class="form-stack"><label>Admin email<input name="email" type="email" autocomplete="username" required></label><label>Password<input name="password" type="password" autocomplete="current-password" minlength="8" required></label><button class="button button-primary">Sign in to admin →</button></form>${cloudEnabled ? "" : `<button class="button button-secondary button-wide" data-action="demo-admin">Open local admin preview →</button>`}<p class="privacy-note">Admin sessions are separate from student sessions on this device.</p><a class="subtle-link" href="./index.html">Go to the student site ↗</a></section></main>`;
 }
 
 function pageHeader(eyebrow, title, subtitle, action = "") {
@@ -266,7 +267,7 @@ function renderWelcome() {
   if (isAdminPortal) { renderAdminWelcome(); return; }
   app.innerHTML = `<main class="welcome">
     <section class="welcome-story"><a class="brand brand-light" href="#"><span class="brand-mark">M</span><span>MathMaster <small>IGCSE MATHEMATICS</small></span></a><div class="welcome-copy"><span class="welcome-pill"><span class="online-dot"></span> YOUR PERSONAL MATHS COMPANION</span><h1>Master IGCSE<br><em>Mathematics.</em></h1><p>Learn. Practice. Improve. Prepare for your exam.</p><div class="welcome-cta"><button class="button button-light" data-action="start-learning">Start Learning <span>→</span></button><button class="welcome-test-link" data-action="guest-diagnostic">Take Diagnostic Test</button></div><div class="welcome-points"><span>✦ Clear, step-by-step lessons</span><span>✦ Practice made for your goals</span><span>✦ Your progress, always saved here</span></div></div><div class="welcome-foot">Made for curious minds, everywhere.</div></section>
-    <section class="welcome-form-wrap"><div class="welcome-form-card"><div class="form-tabs"><button class="form-tab active" data-auth-mode="register">Create account</button><button class="form-tab" data-auth-mode="login">Log in</button></div><div id="auth-panel"></div><p class="privacy-note">🔒 Your account and learning data stay in this browser. No third-party services.</p></div></section>
+    <section class="welcome-form-wrap"><div class="welcome-form-card"><div class="form-tabs"><button class="form-tab active" data-auth-mode="register">Create account</button><button class="form-tab" data-auth-mode="login">Log in</button></div><div id="auth-panel"></div><p class="privacy-note">${cloudEnabled ? "🔒 Your account and progress are stored with Supabase. The administrator can manage learner accounts and progress." : "🔒 Your account and learning data stay in this browser. No third-party services."}</p></div></section>
   </main>
   <section class="public-preview"><div class="preview-inner"><div class="eyebrow">YOUR MATHS, YOUR WAY</div><h2>Everything you need to make progress.</h2><p>One calm, clear place to learn, practise and feel ready for exam day.</p><div class="preview-features">${[["📚", "Learn", "Friendly lessons and worked examples"], ["✏", "Practice", "Instant checking and helpful methods"], ["▣", "Exams", "Original quizzes and timed mocks"], ["◷", "Progress", "See your scores grow by topic"], ["▦", "Study Plan", "A routine shaped around your goal"], ["✧", "Achievements", "Celebrate the little wins"]].map(([icon, title, text]) => `<article><span>${icon}</span><strong>${title}</strong><small>${text}</small></article>`).join("")}</div><div class="preview-topics"><strong>Explore the curriculum</strong>${topics.map(topic => `<span>${esc(topic.name)}</span>`).join("")}</div><div class="preview-how"><span class="eyebrow">HOW IT WORKS</span><h2>One step at a time.</h2><div>${["Take a diagnostic test", "Discover your strengths and weaknesses", "Learn each topic", "Practice questions", "Take exams", "Review mistakes", "Improve your score"].map((step, i) => `<span><i>${i + 1}</i>${step}</span>`).join("")}</div></div></div></section>`;
   renderAuthForm("register");
@@ -278,7 +279,7 @@ function renderAuthForm(mode) {
   panel.innerHTML = mode === "login" ? `
     <div class="eyebrow">WELCOME BACK</div><h2>Pick up where you left off.</h2><p class="muted">Log in to continue your maths journey.</p>
     <form id="login-form" class="form-stack"><label>Email address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label><label>Password<input name="password" type="password" required autocomplete="current-password" minlength="8" placeholder="At least 8 characters"></label><button class="button button-primary button-wide">Log in <span>→</span></button></form>
-    <a class="text-button portal-entry-link" href="./admin.html">Admin sign-in ↗</a>`
+    <a class="text-button portal-entry-link" href="./admin.html">Admin sign-in ↗</a>${cloudEnabled ? `<details><summary>Forgot password?</summary><form id="cloud-reset-email" class="form-stack"><label>Email<input name="email" type="email" autocomplete="email" required></label><button class="button button-secondary">Send recovery link</button></form></details>` : ""}`
     : `<div class="eyebrow">YOUR NEXT CHAPTER</div><h2>Make maths your superpower.</h2><p class="muted">Create your account and set a goal worth working towards.</p>
     <form id="register-form" class="form-stack">
       <div class="input-row"><label>Your name<input name="name" required autocomplete="name" placeholder="Alex Morgan"></label><label>Email address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label></div>
@@ -288,7 +289,7 @@ function renderAuthForm(mode) {
       <label>Create password<input name="password" type="password" required minlength="8" autocomplete="new-password" placeholder="At least 8 characters"></label>
       <label>How confident do you feel?<select name="confidence"><option>Very low</option><option>Low</option><option selected>Average</option><option>Good</option><option>Very good</option></select></label>
       <button class="button button-primary button-wide">Create my account <span>→</span></button>
-    </form><a class="text-button portal-entry-link" href="./admin.html">Admin sign-in ↗</a>`;
+    </form><a class="text-button portal-entry-link" href="./admin.html">Admin sign-in ↗</a>${cloudEnabled ? `<details><summary>Forgot password?</summary><form id="cloud-reset-email" class="form-stack"><label>Email<input name="email" type="email" autocomplete="email" required></label><button class="button button-secondary">Send recovery link</button></form></details>` : ""}`;
   document.querySelectorAll("[data-auth-mode]").forEach(tab => tab.classList.toggle("active", tab.dataset.authMode === mode));
 }
 
@@ -551,7 +552,7 @@ function renderRealPaperChoices() {
 }
 
 function renderPaperChoices() {
-  return `<section class="section-card paper-introduction"><span class="eyebrow">CAMBRIDGE IGCSE MATHEMATICS · 0580</span><h2>Practise an original mock paper.</h2><p>Original questions for the 2025–2027 syllabus. Choose your tier and calculator mode. Each attempt gives you a fresh set.</p><label class="paper-level-label">Answer format<select id="test-answer-mode"><option value="typed" ${user.profile.testMode !== "upload" ? "selected" : ""}>Type answers</option><option value="upload" ${user.profile.testMode === "upload" ? "selected" : ""}>Work on paper & upload</option></select></label><label class="paper-level-label">Course tier<select id="paper-level">${["Core", "Extended"].map(level => `<option ${level === paperLevel ? "selected" : ""}>${level}</option>`).join("")}</select></label><div class="paper-choice-grid">${paperSpecs.filter(spec => spec.level === paperLevel).map(spec => `<article class="paper-choice"><span class="chip chip-blue">${spec.level.toUpperCase()}</span><h3>Paper ${spec.number}</h3><strong>${spec.calculator ? "Calculator" : "Non-calculator"}</strong><p>${spec.duration === 90 ? "1 hour 30 minutes" : "2 hours"} · ${spec.marks} marks · ${spec.marks / 5} multipart questions</p><ul><li>${spec.calculator ? "Use a scientific calculator" : "Solve without a calculator"}</li><li>Answer all parts and show your working</li><li>Review answers and worked solutions after submitting</li></ul><button class="button button-primary button-wide" data-start-exam="paper:${spec.number}">Start Paper ${spec.number} →</button></article>`).join("")}</div><p class="paper-scoring-note">Type answers for instant checking, or calculate on paper and upload photos or a PDF. Paper working uses a learner/teacher review with method and accuracy marks. Everything stays in this browser.</p></section>`;
+  return `<section class="section-card paper-introduction"><span class="eyebrow">CAMBRIDGE IGCSE MATHEMATICS · 0580</span><h2>Practise an original mock paper.</h2><p>Original questions for the 2025–2027 syllabus. Choose your tier and calculator mode. Each attempt gives you a fresh set.</p><label class="paper-level-label">Answer format<select id="test-answer-mode"><option value="typed" ${user.profile.testMode !== "upload" ? "selected" : ""}>Type answers</option><option value="upload" ${user.profile.testMode === "upload" ? "selected" : ""}>Work on paper & upload</option></select></label><label class="paper-level-label">Course tier<select id="paper-level">${["Core", "Extended"].map(level => `<option ${level === paperLevel ? "selected" : ""}>${level}</option>`).join("")}</select></label><div class="paper-choice-grid">${paperSpecs.filter(spec => spec.level === paperLevel).map(spec => `<article class="paper-choice"><span class="chip chip-blue">${spec.level.toUpperCase()}</span><h3>Paper ${spec.number}</h3><strong>${spec.calculator ? "Calculator" : "Non-calculator"}</strong><p>${spec.duration === 90 ? "1 hour 30 minutes" : "2 hours"} · ${spec.marks} marks · ${spec.marks / 5} multipart questions</p><ul><li>${spec.calculator ? "Use a scientific calculator" : "Solve without a calculator"}</li><li>Answer all parts and show your working</li><li>Review answers and worked solutions after submitting</li></ul><button class="button button-primary button-wide" data-start-exam="paper:${spec.number}">Start Paper ${spec.number} →</button></article>`).join("")}</div><p class="paper-scoring-note">Type answers for instant checking, or calculate on paper and upload photos or a PDF. Paper working uses a learner/teacher review with method and accuracy marks. ${cloudEnabled ? "Working syncs privately to your account." : "Everything stays in this browser."}</p></section>`;
 }
 
 function renderSolutionReview() {
@@ -583,7 +584,7 @@ function releaseWorkingUrls() {
 }
 
 async function hydrateWorkingPreviews() {
-  const owner = user?.email;
+  const owner = isAdminPortal && cloudEnabled ? adminSelectedLearner : user?.email;
   if (!owner) { releaseWorkingUrls(); return; }
   const elements = [...document.querySelectorAll("[data-work-preview], [data-work-open]")];
   const visible = new Set(elements.map(element => element.dataset.workPreview || element.dataset.workOpen));
@@ -602,7 +603,7 @@ async function hydrateWorkingPreviews() {
           for (const element of elements.filter(element => element.dataset.workOpen === id && element.isConnected)) element.textContent = "File unavailable in this browser";
           return;
         }
-        if (user?.email !== owner || !elements.some(element => element.isConnected)) return;
+        if ((isAdminPortal && cloudEnabled ? adminSelectedLearner : user?.email) !== owner || !elements.some(element => element.isConnected)) return;
         url = URL.createObjectURL(blob); uploadUrls.set(key, url);
       }
       for (const element of elements.filter(element => (element.dataset.workPreview || element.dataset.workOpen) === id && element.isConnected)) {
@@ -849,7 +850,7 @@ function renderAchievements() {
   }).sort((a, b) => b.leaderboardXp - a.leaderboardXp).slice(0, 10);
   return `${pageHeader("CELEBRATE YOUR WINS", "Look at you go.", "Every little win deserves a moment. Here are the milestones you’re working towards.", `<span class="progress-pill">✧ ${unlocked.length} of ${badgeRules.length} badges</span>`)}
     <section class="section-card badges-section"><div class="section-title-row"><div><span class="eyebrow">YOUR BADGES</span><h2>Little milestones, big pride</h2></div></div><div class="badge-grid">${badgeRules.map(b => `<article class="badge-card ${unlocked.includes(b.id) ? "unlocked" : "locked"}"><span class="badge-icon">${b.icon}</span>${unlocked.includes(b.id) ? `<span class="badge-earned">EARNED</span>` : `<span class="badge-lock">LOCKED</span>`}<h3>${esc(b.name)}</h3><p>${esc(b.description)}</p></article>`).join("")}</div></section>
-    <section class="section-card leaderboard"><div class="section-title-row"><div><span class="eyebrow">A LITTLE FRIENDLY MOTIVATION</span><h2>Community leaderboard</h2></div><select aria-label="Leaderboard period" data-leaderboard-period><option ${leaderboardPeriod === "all" ? "selected" : ""} value="all">All-time</option><option ${leaderboardPeriod === "week" ? "selected" : ""} value="week">Weekly</option><option ${leaderboardPeriod === "month" ? "selected" : ""} value="month">Monthly</option></select></div><div class="leaderboard-note">This demo leaderboard includes accounts saved on this device only.</div>${rankings.length ? rankings.map((item, i) => `<div class="leader-row ${item.email === user.email ? "leader-self" : ""}"><span class="leader-rank">${["🥇", "🥈", "🥉"][i] || `0${i + 1}`}</span><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span class="leader-name">${esc(item.profile.name)} ${item.email === user.email ? "<small>You</small>" : ""}</span><span class="leader-questions">${item.leaderboardQuestions} questions</span><strong>${item.leaderboardXp} XP</strong></div>`).join("") : `<div class="empty-state">Your leaderboard appears here.</div>`}<label class="hide-leaderboard"><input type="checkbox" data-action="hide-leaderboard" ${user.profile.hideLeaderboard ? "checked" : ""}> Hide me from the leaderboard</label></section>`;
+    <section class="section-card leaderboard"><div class="section-title-row"><div><span class="eyebrow">A LITTLE FRIENDLY MOTIVATION</span><h2>Community leaderboard</h2></div><select aria-label="Leaderboard period" data-leaderboard-period><option ${leaderboardPeriod === "all" ? "selected" : ""} value="all">All-time</option><option ${leaderboardPeriod === "week" ? "selected" : ""} value="week">Weekly</option><option ${leaderboardPeriod === "month" ? "selected" : ""} value="month">Monthly</option></select></div><div class="leaderboard-note">${cloudEnabled ? "Your personal progress is shown here. Other learners’ private profiles are protected." : "This demo leaderboard includes accounts saved on this device only."}</div>${rankings.length ? rankings.map((item, i) => `<div class="leader-row ${item.email === user.email ? "leader-self" : ""}"><span class="leader-rank">${["🥇", "🥈", "🥉"][i] || `0${i + 1}`}</span><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span class="leader-name">${esc(item.profile.name)} ${item.email === user.email ? "<small>You</small>" : ""}</span><span class="leader-questions">${item.leaderboardQuestions} questions</span><strong>${item.leaderboardXp} XP</strong></div>`).join("") : `<div class="empty-state">Your leaderboard appears here.</div>`}<label class="hide-leaderboard"><input type="checkbox" data-action="hide-leaderboard" ${user.profile.hideLeaderboard ? "checked" : ""}> Hide me from the leaderboard</label></section>`;
 }
 
 function applyAppearance() {
@@ -887,6 +888,7 @@ function supportInbox() {
 }
 
 function guidedSupportChoices() {
+  if (cloudEnabled) return "";
   const node = supportGuideState(supportMessages(user.email, user.email));
   return `<p class="muted">${supportGuide[node].options ? "Choose an option:" : ["other", "waiting", "resolved"].includes(node) ? "Choose your next step:" : "Did this help? Choose your next step:"}</p><div class="support-options">${supportChoices(node).map(option => `<button type="button" class="button button-secondary" data-support-option="${esc(option.id)}">${esc(option.label)}</button>`).join("")}</div>`;
 }
@@ -896,7 +898,7 @@ function renderHelpCenter() {
   const email = isAdminPortal ? supportLearner : user.email;
   const learner = store.users.find(account => account.email === email && account.role !== "admin");
   return `${isAdminPortal ? "" : pageHeader("WE ARE HERE TO HELP", "Help center.", "Ask about studying, using the website or your account.")}
-    <p class="support-local-note">This chat is saved in this browser. The admin can reply from the admin page on the same browser. Messages do not travel to other devices yet.</p>
+    <p class="support-local-note">${cloudEnabled ? "Your messages are shared privately with the administrator across devices." : "This chat is saved in this browser. The admin can reply from the admin page on the same browser. Messages do not travel to other devices yet."}</p>
     <div class="support-layout ${isAdminPortal ? "with-inbox" : ""}">${isAdminPortal ? `<aside class="section-card"><h2>Conversations</h2><div id="support-inbox">${supportInbox()}</div></aside>` : ""}<section class="section-card support-chat"><h2>${isAdminPortal ? learner ? `Chat with ${esc(learner.profile.name)}` : "Student support" : "Chat with the admin"}</h2><div id="support-messages" class="support-messages" role="log" aria-live="polite" aria-label="Conversation">${supportLog(email)}</div>${!isAdminPortal ? `<div id="support-options">${guidedSupportChoices()}</div>` : ""}${email && learner ? `<form id="support-message-form" class="form-stack"><label for="support-message">${isAdminPortal ? "Your reply" : "Or describe your problem"}</label><textarea id="support-message" name="message" rows="3" maxlength="2000" required placeholder="Write your message…"></textarea><button class="button button-primary">Send ${isAdminPortal ? "reply" : "message"} →</button></form>` : ""}</section></div>`;
 }
 
@@ -956,7 +958,7 @@ function renderAdmin() {
   const tab = window.adminTab || "dashboard";
   const labels = { dashboard: "Admin dashboard", questions: "Manage questions", lessons: "Manage lessons", users: "Learner accounts", create: "Create content", support: "Help center" };
   return `${pageHeader("CONTENT MANAGEMENT", labels[tab] || labels.dashboard, "Manage the learning content and accounts saved on this device.", `<span class="progress-pill">Admin area</span>`)}
-    <div class="admin-warning">This local prototype stores admin permissions and content in this browser.</div>
+    <div class="admin-warning">${cloudEnabled ? "Administrator access is checked by the server. Learner details and progress are shared across devices." : "This local prototype stores admin permissions and content in this browser."}</div>
     <section id="admin-panel">${adminPanel(tab)}</section>`;
 }
 
@@ -964,10 +966,15 @@ function adminLearnersPanel() {
   const learners = store.users.filter(account => account.role !== "admin");
   const selected = learners.find(account => account.email === adminSelectedLearner);
   const p = selected?.profile;
-  return `<section class="section-card"><div class="section-title-row"><div><span class="eyebrow">ON THIS DEVICE</span><h2>Learner accounts</h2><p class="muted">Edit learner details or set a new password.</p></div></div>${learners.map(item => `<div class="admin-content-row admin-learner-row"><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span><strong>${esc(item.profile.name)}</strong><small>${esc(item.email)} · ${item.profile.questionsCompleted} questions · ${item.profile.xp} XP</small></span><button class="button button-secondary" data-admin-edit-user="${esc(item.email)}" ${adminAccountSaving ? "disabled" : ""}>Manage account</button></div>`).join("") || `<p class="muted">No learner accounts on this device yet.</p>`}</section>
+  return `<section class="section-card"><div class="section-title-row"><div><span class="eyebrow">${cloudEnabled ? "ALL LEARNERS" : "ON THIS DEVICE"}</span><h2>Learner accounts</h2><p class="muted">Edit learner details or set a new password.</p></div></div>${learners.map(item => `<div class="admin-content-row admin-learner-row"><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span><strong>${esc(item.profile.name)}</strong><small>${esc(item.email)} · ${item.profile.questionsCompleted} questions · ${item.profile.xp} XP</small></span><button class="button button-secondary" data-admin-edit-user="${esc(item.email)}" ${adminAccountSaving ? "disabled" : ""}>Manage account</button></div>`).join("") || `<p class="muted">${cloudEnabled ? "No learner accounts yet." : "No learner accounts on this device yet."}</p>`}</section>
     ${selected ? `<section class="section-card admin-learner-editor" id="admin-learner-editor"><div class="section-title-row"><div><span class="eyebrow">EDIT LEARNER</span><h2>${esc(p.name)}</h2><p class="muted">${esc(selected.email)}</p></div><button class="text-button" data-admin-close-user ${adminAccountSaving ? "disabled" : ""}>Close</button></div>
     <form id="admin-user-form" class="form-stack"><label>Student name<input name="name" value="${esc(p.name)}" required maxlength="100"></label><div class="input-row"><label>Exam board<select name="board">${["Cambridge IGCSE", "Edexcel International GCSE"].map(x => `<option ${p.board === x ? "selected" : ""}>${x}</option>`).join("")}</select></label><label>Target grade<select name="target">${["A*", "A", "B", "C", "D", "Other"].map(x => `<option ${p.target === x ? "selected" : ""}>${x}</option>`).join("")}</select></label></div><div class="input-row"><label>Exam date<input name="examDate" type="date" value="${esc(p.examDate || "")}"></label><label>Exam tier<select name="paperLevel">${["Core", "Extended"].map(x => `<option ${(p.paperLevel || "Extended") === x ? "selected" : ""}>${x}</option>`).join("")}</select></label></div><label>Confidence<select name="confidence">${["Very low", "Low", "Average", "Good", "Very good"].map(x => `<option ${p.confidence === x ? "selected" : ""}>${x}</option>`).join("")}</select></label>${goalPicker(p.goals || [])}<button class="button button-primary" ${adminAccountSaving ? "disabled" : ""}>Save learner details</button></form>
-    <div class="admin-password-reset"><span class="eyebrow">ACCOUNT RECOVERY</span><h2>Reset password</h2><p class="muted">Set a new password for this student and share it with them. Their previous password will stop working.</p><form id="admin-reset-password-form" class="form-stack"><label>New password<input name="password" type="password" minlength="8" autocomplete="new-password" required placeholder="At least 8 characters"></label><label>Confirm new password<input name="confirmation" type="password" minlength="8" autocomplete="new-password" required></label><button class="button button-primary" ${adminAccountSaving ? "disabled" : ""}>${adminAccountSaving ? "Saving…" : "Reset student password"}</button></form></div></section>` : ""}`;
+    ${cloudEnabled ? `<p class="muted">Password recovery is managed securely in Supabase Authentication.</p>${adminLearnerProgress(p)}<h3>Learning progress</h3><p>${p.completedLessons?.length || 0} lessons · ${p.exams?.length || 0} mock attempts · ${p.officialPapers?.length || 0} past-paper attempts</p>${(p.officialPapers || []).map(attempt=>`<p>${esc(attempt.title || attempt.paperId)} · ${esc(attempt.status)} · ${Number(attempt.percentage || 0)}%</p>`).join("")}` : `<div class="admin-password-reset"><span class="eyebrow">ACCOUNT RECOVERY</span><h2>Reset password</h2><p class="muted">Set a new password for this student and share it with them. Their previous password will stop working.</p><form id="admin-reset-password-form" class="form-stack"><label>New password<input name="password" type="password" minlength="8" autocomplete="new-password" required placeholder="At least 8 characters"></label><label>Confirm new password<input name="confirmation" type="password" minlength="8" autocomplete="new-password" required></label><button class="button button-primary" ${adminAccountSaving ? "disabled" : ""}>${adminAccountSaving ? "Saving…" : "Reset student password"}</button></form></div>`}</section>` : ""}`;
+}
+
+function adminLearnerProgress(profile) {
+  const files=[...(profile.officialPapers || []).flatMap(p=>p.files || []), ...(profile.exams || []).flatMap(e=>(e.review || []).flatMap(q=>q.files || [])), ...Object.values(profile.paperDraft?.uploads || {}).flat()];
+  return `<h3>Study plan</h3><p>${profile.studyPlan ? `${profile.studyPlan.days || 0} days per week · ${profile.studyPlan.minutes || 0} minutes per session` : "No study plan saved yet."}</p><h3>Submitted working</h3>${files.map(file=>`<p><a data-work-open="${esc(file.id)}" target="_blank" rel="noopener noreferrer">${esc(file.name)} ↗</a></p>`).join("") || '<p class="muted">No uploads yet.</p>'}<h3>Past-paper answers</h3>${(profile.officialPapers || []).map(attempt=>`<details><summary>${esc(attempt.title || attempt.paperId)} · ${esc(attempt.status)}</summary>${(attempt.answers || []).map(answer=>`<p><strong>${esc(answer.label)}</strong></p><pre class="learner-working">${esc(answer.working || "No written answer")}</pre>`).join("")}</details>`).join("") || '<p class="muted">No attempts yet.</p>'}`;
 }
 
 function adminPanel(tab) {
@@ -1061,6 +1068,9 @@ function startOfficialTimer() {
 }
 
 function render() {
+  if(cloudEnabled && cloudNeedsPassword()) {
+    app.innerHTML=`<main class="admin-welcome"><section class="section-card"><h1>Set your account password</h1><form id="cloud-set-password" class="form-stack"><label>New password<input name="password" type="password" autocomplete="new-password" minlength="8" required></label><label>Confirm password<input name="confirmation" type="password" autocomplete="new-password" minlength="8" required></label><button class="button button-primary">Save password</button></form></section></main>`; return;
+  }
   applyAppearance();
   clearInterval(officialTimer);
   if (!user) { renderWelcome(); return; }
@@ -1100,7 +1110,7 @@ function render() {
   hydrateWorkingPreviews();
   if (route === "Help Center") refreshSupport();
   if (route === "OfficialPaper") startOfficialTimer();
-  if (route === "Admin") document.querySelector("#admin-panel").innerHTML = adminPanel(window.adminTab || "dashboard");
+  if (route === "Admin") { document.querySelector("#admin-panel").innerHTML = adminPanel(window.adminTab || "dashboard"); hydrateWorkingPreviews(); }
   if (["Exam", "ExamReview"].includes(route) && exam?.duration) startTimer();
 }
 
@@ -1148,7 +1158,7 @@ function saveContentStore() {
 }
 
 function enterAdminPreview() {
-  if (!isAdminPortal) return;
+  if (!isAdminPortal || cloudEnabled) return;
   store = readStore();
   user = store.users.find(item => item.role === "admin");
   if (!user) {
@@ -1440,8 +1450,9 @@ app.addEventListener("click", async event => {
     return;
   }
   if (target.dataset.action === "logout") {
+    if (cloudEnabled) { try { await cloudSignOut(); } catch (error) { toast(error.message,"error"); return; } }
     releaseWorkingUrls(); savePortalSession(null, isAdminPortal);
-    if (!isAdminPortal) { store.currentEmail = null; writeStore(store); }
+    if (!isAdminPortal && !cloudEnabled) { store.currentEmail = null; writeStore(store); }
     user = null; exam = null; route = "Welcome"; render();
   }
   if (target.dataset.studyMonth) {
@@ -1688,6 +1699,14 @@ app.addEventListener("submit", async event => {
     return;
   }
 
+  if (form.id === "cloud-reset-email") {
+    try { await cloudResetEmail(String(values.get("email") || "").trim()); toast("If this account exists, check its email for a recovery link."); } catch(error) {toast(error.message,"error");} return;
+  }
+  if (form.id === "cloud-set-password") {
+    const password=String(values.get("password") || "");
+    if(password.length<8 || password!==String(values.get("confirmation"))) {toast("Use at least 8 characters and matching passwords.","error");return;}
+    try {await cloudSetPassword(password); render();toast("Password saved.");} catch(error) {toast(error.message,"error");} return;
+  }
   if (form.id === "past-paper-setup") {
     const paper = pastPapers.find(p => p.id === officialSelectedId);
     if (!paper) return;
@@ -1717,6 +1736,7 @@ app.addEventListener("submit", async event => {
   }
   if (form.id.startsWith("admin-") && (!isAdminPortal || user?.role !== "admin")) return;
   if (["admin-user-form", "admin-reset-password-form"].includes(form.id)) {
+    if (cloudEnabled && form.id === "admin-reset-password-form") { toast("Use Supabase Authentication to send account recovery."); return; }
     if (!adminSelectedLearner || adminAccountSaving) return;
     try {
       if (form.id === "admin-user-form") {
@@ -1741,6 +1761,16 @@ app.addEventListener("submit", async event => {
   if (form.id === "register-form") {
     if (isAdminPortal) return;
     const email = String(values.get("email")).trim().toLowerCase();
+    if (cloudEnabled) {
+      try {
+        const profile=emptyProfile(String(values.get("name")).trim(),email,String(values.get("board")),String(values.get("target")),String(values.get("examDate")));
+        profile.confidence=String(values.get("confidence")); profile.goals=values.getAll("goals").map(String);
+        user=await cloudSignUp(email,String(values.get("password")),profile); store=readStore();
+        if (!user) { renderAuthForm("login"); toast("Check your email to confirm your account, then log in."); }
+        else { route="Home"; render(); toast("Your shared account is ready."); }
+      } catch(error) { toast(error.message,"error"); }
+      return;
+    }
     if (store.users.some(item => item.email === email)) { toast("An account with that email already exists. Try logging in.", "error"); return; }
     try {
       const credentials = await passwordHash(String(values.get("password")));
@@ -1763,6 +1793,10 @@ app.addEventListener("submit", async event => {
   }
   if (form.id === "login-form") {
     const email = String(values.get("email")).trim().toLowerCase();
+    if (cloudEnabled) {
+      try { user=await cloudSignIn(email,String(values.get("password"))); store=readStore(); setRoute(isAdminPortal?"Admin":"Home"); }
+      catch(error) { toast(error.message,"error"); } return;
+    }
     const candidate = store.users.find(item => item.email === email && item.password);
     if (!candidate || (isAdminPortal ? candidate.role !== "admin" : candidate.role === "admin")) { toast("We couldn’t find an account for this portal with those details.", "error"); return; }
     try {
@@ -1846,6 +1880,7 @@ app.addEventListener("submit", async event => {
     const button = form.querySelector?.('button[type="submit"], button');
     try {
       passwordSaving = true; if (button) button.disabled = true;
+      if (cloudEnabled) { await cloudChangePassword(String(values.get("current")),next); form.reset(); toast("Password updated."); return; }
       refreshManagedAccount(user, readStore().users.find(account => account.email === user.email));
       if (!user.password) throw new Error("Ask the admin to set a password for this account.");
       const existingHash = user.password.hash.join(",");
@@ -1916,10 +1951,29 @@ window.addEventListener("visibilitychange", updateLocalClock);
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") navigator.serviceWorker.register("./service-worker.js").catch(error => console.warn("Offline caching is unavailable.", error));
 
+function updateCloudBanner() {
+  if (!cloudEnabled) return;
+  let banner=document.querySelector("#cloud-sync-status");
+  if (!banner) { banner=document.createElement("div"); banner.id="cloud-sync-status"; banner.setAttribute("role","status"); document.body.append(banner); }
+  banner.innerHTML=`<span>${esc(cloudStatus())}</span> <button type="button" id="cloud-retry">Retry sync</button>`;
+  banner.querySelector("button").onclick=()=>flushCloud();
+}
+if (cloudEnabled) {
+  onCloudStatus(updateCloudBanner);
+  initializeCloud(isAdminPortal).then(()=> { store=readStore(); user=portalUser(store,isAdminPortal); route=user?(isAdminPortal?"Admin":"Home"):"Welcome"; render(); updateCloudBanner(); })
+    .catch(error=> { user=null; render(); updateCloudBanner(); toast(error.message,"error"); });
+  window.addEventListener("online",()=>flushCloud());
+  const refreshCloudView=async()=> {
+    if (!user || !["Home","Progress","Achievements","Profile","Study Plan","Settings","Help Center","Admin","Past Papers"].includes(route) || ["INPUT","TEXTAREA","SELECT"].includes(document.activeElement?.tagName)) return;
+    try { if(await refreshCloud()) { store=readStore(); const latest=portalUser(store,isAdminPortal); if(latest) { user=latest; render(); } } } catch(error) { toast(error.message,"error"); }
+  };
+  window.addEventListener("focus",refreshCloudView);
+  const cloudRefreshTimer=setInterval(refreshCloudView,30000); cloudRefreshTimer?.unref?.();
+}
 // A starter set makes the first visit useful before an account is created.
 if (new URLSearchParams(location.search).get("preview") === "admin" && !isAdminPortal) {
   location.replace("./admin.html?preview=admin");
 } else {
-  if (isAdminPortal && new URLSearchParams(location.search).get("preview") === "admin") enterAdminPreview();
+  if (!cloudEnabled && isAdminPortal && new URLSearchParams(location.search).get("preview") === "admin") enterAdminPreview();
   render();
 }

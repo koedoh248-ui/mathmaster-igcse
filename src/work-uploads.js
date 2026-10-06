@@ -1,3 +1,4 @@
+import { cloudEnabled, cloudSaveFile, cloudReadFile, cloudDeleteFile } from "./cloud.js";
 const DB_NAME = "mathmaster-paper-working-v1";
 export const maxUploadBytes = 10 * 1024 * 1024;
 export const maxQuestionFiles = 5;
@@ -35,6 +36,11 @@ export async function saveWorkFiles(owner, files, existingCount = 0) {
   if (!selected.length) return [];
   if (selected.length + existingCount > maxQuestionFiles) throw new Error("Attach up to 5 files per question.");
   await Promise.all(selected.map(validateWorkFile));
+  if (cloudEnabled) {
+    const records=[];
+    try { for(const file of selected) records.push(await cloudSaveFile(owner,file)); return records; }
+    catch(error) { await Promise.allSettled(records.map(record=>cloudDeleteFile(owner,record.id))); throw error; }
+  }
   const db = await openDatabase();
   const records = selected.map(file => ({ id: crypto.randomUUID(), owner, name: file.name || "Paper working", type: file.type, size: file.size, blob: file, created: new Date().toISOString() }));
   await new Promise((resolve, reject) => {
@@ -48,6 +54,7 @@ export async function saveWorkFiles(owner, files, existingCount = 0) {
 }
 
 export async function readWorkFile(owner, id) {
+  if (cloudEnabled) return cloudReadFile(owner,id);
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const request = db.transaction("files", "readonly").objectStore("files").get(id);
@@ -60,6 +67,7 @@ export async function readWorkFile(owner, id) {
 }
 
 export async function deleteWorkFile(owner, id) {
+  if (cloudEnabled) return cloudDeleteFile(owner,id);
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction("files", "readwrite"), store = transaction.objectStore("files");
