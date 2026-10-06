@@ -1,0 +1,10 @@
+{
+  "name": "MathMaster IGCSE",
+  "short_name": "MathMaster",
+  "description": "Learn, practise and prepare for IGCSE Mathematics.",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#090e17",
+  "theme_color": "#090e17",
+  "icons": []
+}

@@ -1,0 +1,12 @@
+{
+  "name": "mathmaster-igcse",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node scripts/build-site.mjs",
+    "test": "node --test",
+    "build:test": "node scripts/build-private-copy.mjs"
+  }
+}
