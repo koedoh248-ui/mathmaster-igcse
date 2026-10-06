@@ -31,7 +31,9 @@ export async function buildPrivateTest() {
       source = source.replace(/^if \("serviceWorker" in navigator[^\n]+\n/m, '');
       source = source.replace('Original learning content · No external services required', 'Private test copy · <a href="?portal=admin">Test admin</a>');
     }
-    source = source.replaceAll('mathmaster-igcse-v1', 'mathmaster-private-test-v1')
+    if (path.endsWith('/src/cloud-config.js')) source = 'const cloudConfig = { url: "", publishableKey: "" };';
+    source = source.replaceAll('./index.html', '?portal=student').replaceAll('./admin.html', '?portal=admin');
+    source = source.replaceAll('mathmaster-igcse-v1' , 'mathmaster-private-test-v1')
       .replaceAll('mathmaster-admin-session-v1', 'mathmaster-private-admin-session-v1')
       .replaceAll('mathmaster-student-session-v1', 'mathmaster-private-student-session-v1')
       .replaceAll('mathmaster-preferences-v1', 'mathmaster-private-preferences-v1')
