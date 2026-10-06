@@ -1,3 +1,11 @@
+# MathMaster IGCSE
+
+The hosted website uses Supabase for shared learner accounts, progress, private working uploads, administrator content, and support messages. GitHub Pages serves the student and admin interfaces. Backend setup and launch requirements are documented in [supabase/README.md](supabase/README.md).
+
+The single main administrator is assigned in the database after their website email is confirmed. The local admin preview is disabled on the cloud site. Run `npm test` and `npm run build` before publishing. Keep the database password and secret/service-role keys out of the repository.
+
+The earlier development notes below describe the offline prototype and its features; browser-only storage behavior applies to the private demo or to a configuration without cloud credentials.
+
 # MathMaster IGCSE — Part 1
 
 A responsive, offline-friendly IGCSE Mathematics learning prototype. It has no runtime dependencies and does not call third-party or AI services.
