@@ -1,0 +1,47 @@
+export const guideSteps = [
+  { title: "Welcome to MathMaster", icon: "✦", paragraphs: ["This is your space to learn IGCSE maths, practise questions and prepare for exams. Start small: learn a topic, try a few questions, then review what needs work.", "Press Next to explore each tool. Skip finishes the entire guide immediately. You can open it again using Help in the top bar."], tip: "The guide remembers your place if you leave before finishing." },
+  { title: "Find your way around", icon: "☰", paragraphs: ["The left menu groups your tools into Learn, Resources and Your progress. Select a page to open it.", "On a computer, the menu starts collapsed. Move the mouse to the slim strip at the left edge to open it; it closes when you move away. You can also use the ☰ button or click the strip. On a phone, tap ☰ and the menu closes after you pick a page."], tip: "The page name in the top bar tells you where you are." },
+  { title: "Choose your learning goals", icon: "○", paragraphs: ["Open Profile to set your name, exam board, target grade and optional exam date.", "Only your selected learning goals appear. Expand Change goals, tick the goals you want and press Save changes. You can update them whenever your priorities change."], tip: "Choose goals that match what you want to achieve next." },
+  { title: "Start from your home page", icon: "⌂", paragraphs: ["Home brings together your learning progress, next lesson and suggested topics. Use it to decide what to study today.", "If you are unsure where to start, take the diagnostic test. It helps identify strengths and topics that need practice so you can plan your study."], tip: "A diagnostic is a starting point, not a final judgement of your ability." },
+  { title: "Learn a topic step by step", icon: "▤", paragraphs: ["Open Learn and search for a topic or browse the lessons. Each lesson includes an explanation, formulas, worked examples and practice.", "Read the method, try the practice and mark the lesson complete when you are ready. Formula Reference gives you a quick place to look up formulas while revising."], tip: "Try an example yourself before reading all its steps." },
+  { title: "Practise and get feedback", icon: "✎", paragraphs: ["Practice lets you work through questions and check your answers. Questions may use answer boxes, choices, matching or several parts.", "Use a hint if you get stuck. After checking an answer, read the feedback and method, try again or move to the next question. Try a different set for more variety."], tip: "Write down your working, even when only the final answer is entered." },
+  { title: "Find questions and build a habit", icon: "⌕", paragraphs: ["Question Bank lets you search by topic or skill and filter by tier, difficulty, question type and calculator use. Browse the pages and choose a question to practise.", "Daily Challenge offers a question for the day. It is a useful short activity when you have only a few minutes."], tip: "The built-in question bank contains original Cambridge-style practice questions." },
+  { title: "Choose a real past paper", icon: "▧", paragraphs: ["Past Papers and Exams let you browse archived Cambridge 0580 papers by year, session, tier, paper and variant. Choose the year, session and variant under Start Paper 2 or Start Paper 4, or browse the full catalogue. A scanned question index gives you Previous / Next navigation and an answer space for every question, with the original PDF alongside it. Its matching mark scheme becomes available for review.", "To take a real paper, copy its duration and total marks from the cover into the setup. Choose timed or untimed practice, work through every page, and save typed notes or attach your handwritten working."], tip: "Opening the external paper and mark-scheme PDFs needs an internet connection." },
+  { title: "Take a practice exam", icon: "▣", paragraphs: ["Exams also offers original timed mock papers and topic tests. Choose Core or Extended and check the calculator instructions before starting.", "Use the question numbers to move around, flag questions to revisit and watch the timer. Review your answers or attachments before submitting."], tip: "Original mock questions are separate from the archived official papers." },
+  { title: "Upload calculations from paper", icon: "↥", paragraphs: ["For a calculation test, choose the paper-working upload mode. Solve the questions on paper, then attach clear JPG, PNG, WebP images or a PDF to the correct question. Real-paper workspaces also accept these files.", "Make question labels, every calculation step and your final answer easy to read. Uploads are saved on this device; wait for saving to finish before leaving or submitting."], tip: "Each file can be up to 10 MB, with up to five attachments per question." },
+  { title: "Understand marking and results", icon: "✓", paragraphs: ["Typed answers receive automatic final-answer checking, including supported equivalent numerical and algebraic forms. After a test, Check this answer & alternative working gives feedback on typed steps or a transcription. Uploaded handwriting still needs a self or teacher review: the app does not read it automatically.", "For original tests, use the displayed method, accuracy and independent-mark criteria to review each part. For real papers, use the matching Cambridge mark scheme, enter each part’s available and earned marks, and add feedback. A final score appears only when the review is complete."], tip: "A pending review is not a zero score. Check feedback as well as the total." },
+  { title: "Review mistakes and plan your study", icon: "↺", paragraphs: ["Progress shows your scores by topic. Mistakes lets you revisit questions you found difficult and practise them again.", "Study Plan starts with a Suggested schedule. Save Make it yours to hide the setup form and see your month calendar and weekly timetable. Use Edit my plan anytime, or select a date to change a session, repeat it weekly or mark it complete. Achievements shows your milestones, XP and badges. Profile keeps your details and exam results together."], tip: "A helpful routine is: learn, practise, review mistakes, then test yourself." },
+  { title: "Make the site comfortable and get help", icon: "⚙", paragraphs: ["Open Settings to choose dark neon mint or light neon green, and Standard, Large or Extra large text. Your choices save automatically for this account in this browser. Reset your password with your current password and confirm the new one.", "Help Center lets you message the admin. The admin replies from their Help center inbox on the same browser. If you forgot your password, ask the admin to reset it. This local chat does not send messages to another device yet."], tip: "Open Settings or Help Center anytime from the navigation menu." },
+  { title: "Your work is saved here", icon: "◇", paragraphs: ["Your account, goals, progress and uploaded work are stored in this browser on this device. They do not automatically sync to another phone, computer or browser, and clearing site data removes them.", "Previously cached learning pages can work offline. External past-paper PDFs still need internet access. You can reopen this whole guide from Help whenever you need a reminder."], tip: "You are ready to begin. Pick one topic and take your first step." }
+];
+
+export function guideState(profile) {
+  const saved = profile.studentGuide || {};
+  const step = Number.isInteger(saved.step) ? Math.min(guideSteps.length - 1, Math.max(0, saved.step)) : 0;
+  return { step, completed: saved.completed === true, skipped: saved.skipped === true };
+}
+
+export function updateGuide(profile, action) {
+  const state = guideState(profile);
+  if (action === "restart") profile.studentGuide = { step: 0, completed: false, skipped: false };
+  else if (action === "skip") profile.studentGuide = { ...state, completed: true, skipped: true };
+  else if (!state.completed && action === "next") profile.studentGuide = state.step === guideSteps.length - 1
+    ? { ...state, completed: true, skipped: false }
+    : { ...state, step: state.step + 1 };
+  else if (!state.completed && action === "back") profile.studentGuide = { ...state, step: Math.max(0, state.step - 1) };
+  return guideState(profile);
+}
+
+export function guideMarkup(profile) {
+  const state = guideState(profile);
+  if (state.completed) return "";
+  const step = guideSteps[state.step];
+  return `<dialog class="student-guide" id="student-help-dialog" aria-labelledby="guide-title" aria-describedby="guide-description">
+    <div class="guide-top"><span class="eyebrow">YOUR QUICK START GUIDE</span><span class="guide-counter">Step ${state.step + 1} of ${guideSteps.length}</span></div>
+    <progress class="guide-progress" value="${state.step + 1}" max="${guideSteps.length}" aria-label="Guide progress"></progress>
+    <div class="guide-icon" aria-hidden="true">${step.icon}</div><h2 id="guide-title" tabindex="-1" autofocus>${step.title}</h2>
+    <div id="guide-description">${step.paragraphs.map(paragraph => `<p>${paragraph}</p>`).join("")}</div>
+    <div class="guide-tip">${step.tip}</div>
+    <div class="guide-actions"><button class="text-button guide-skip" data-guide="skip">Skip guide</button><div>${state.step ? `<button class="button button-secondary" data-guide="back">Back</button>` : ""}<button class="button button-primary" data-guide="next">${state.step === guideSteps.length - 1 ? "Finish guide" : "Next →"}</button></div></div>
+  </dialog>`;
+}
