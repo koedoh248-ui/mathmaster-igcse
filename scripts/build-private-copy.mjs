@@ -37,6 +37,7 @@ export async function buildPrivateTest() {
       .replaceAll('mathmaster-admin-session-v1', 'mathmaster-private-admin-session-v1')
       .replaceAll('mathmaster-student-session-v1', 'mathmaster-private-student-session-v1')
       .replaceAll('mathmaster-preferences-v1', 'mathmaster-private-preferences-v1')
+      .replaceAll('mathmaster-progress-reset-v1', 'mathmaster-private-progress-reset-v1')
       .replaceAll('mathmaster-support-v1', 'mathmaster-private-support-v1')
       .replaceAll('mathmaster-paper-working-v1', 'mathmaster-private-test-working-v1');
     modules.push(`// ${relative(root, path)}\n__modules[${JSON.stringify(relative(root, path))}] = (() => {\n${source}\nreturn { ${exports.join(', ')} };\n})();`);

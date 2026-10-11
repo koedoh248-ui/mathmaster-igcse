@@ -29,12 +29,12 @@ export function sendSupportMessage(actorEmail, learnerEmail, text) {
 function automaticReply(email, node) {
   return { id: crypto.randomUUID(), learnerEmail: email, senderEmail: null, senderRole: "admin", automated: true, guideNode: node, body: supportGuide[node].text, date: new Date().toISOString() };
 }
-export function startSupportGuide(email) {
+export function startSupportGuide(email, { restart = false } = {}) {
   if (cloudEnabled) return;
   const account = readStore().users.find(user => user.email === email && user.role !== "admin");
   if (!account) throw new Error("This conversation is unavailable.");
   const messages = readSupport();
-  if (!messages.some(message => message.learnerEmail === email && message.automated)) {
+  if (restart || !messages.some(message => message.learnerEmail === email && message.automated)) {
     messages.push(automaticReply(email, "start"));
     localStorage.setItem(KEY, JSON.stringify(messages));
   }
