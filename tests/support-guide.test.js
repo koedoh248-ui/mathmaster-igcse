@@ -54,3 +54,17 @@ test('automatic help persists choices, separates learners and escalates messages
   assert.equal(supportGuideState(supportMessages('one@local', 'one@local')), 'start');
   assert.throws(() => chooseSupportOption('admin@local', 'other'));
 });
+
+test('restarting help adds a fresh guide without removing previous messages or another learner’s session', () => {
+  const saved = new Map();
+  globalThis.localStorage = { getItem: key => saved.get(key) || null, setItem: (key, value) => saved.set(key, value) };
+  saved.set('mathmaster-igcse-v1', JSON.stringify({users: ['one@local','two@local'].map(email => ({email,role:'student',profile:emptyProfile(email,email)})),content:{}}));
+  startSupportGuide('one@local'); chooseSupportOption('one@local','account');
+  startSupportGuide('two@local'); chooseSupportOption('two@local','study');
+  const before = supportMessages('one@local','one@local'), other = supportMessages('two@local','two@local');
+  startSupportGuide('one@local',{restart:true});
+  const after = supportMessages('one@local','one@local');
+  assert.deepEqual(after.slice(0,-1),before);
+  assert.equal(supportGuideState(after),'start');
+  assert.deepEqual(supportMessages('two@local','two@local'),other);
+});
