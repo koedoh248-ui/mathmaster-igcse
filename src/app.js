@@ -1,3 +1,4 @@
+import { progressBackup, resetLearningProgress, restoreLearningProgress, clearProgressBackup } from "./progress-reset.js";
 import { cloudEnabled, cloudNeedsPassword, cloudResetEmail, cloudSetPassword, initializeCloud, cloudSignIn, cloudSignUp, cloudSignOut, cloudChangePassword, cloudStatus, onCloudStatus, flushCloud, refreshCloud } from "./cloud.js";
 import { currentStreak, clockLabel } from "./local-time.js";
 import { streakFlame } from "./streak-flame.js";
@@ -58,7 +59,10 @@ let examTimer = null;
 let leaderboardPeriod = "all";
 let startDiagnosticAfterAuth = false;
 let supportLearner = "";
+let supportSession = null;
 let passwordSaving = false;
+let progressResetOpen = false;
+let progressResetSaving = false;
 let adminEditing = null;
 let adminSelectedLearner = "";
 let adminAccountSaving = false;
@@ -74,8 +78,8 @@ const activeOfficialAttempt = () => user?.profile.officialPapers?.find(a => a.id
 
 const uploadUrls = new Map();
 
-const icons = { Home: "⌂", Learn: "▤", Practice: "✎", "Question Bank": "⌕", "Past Papers": "▧", Exams: "▣", Progress: "◷", "Study Plan": "▦", Achievements: "✧", Profile: "○", Settings: "⚙", "Help Center": "☏", Admin: "⚙" };
-icons["Daily Challenge"] = "✧";
+const icons = { Home: "⌂", Learn: "▤", Practice: "✎", "Question Bank": "⌕", "Past Papers": "▧", Exams: "▣", Progress: "◷", "Study Plan": "▦", Achievements: "", Profile: "○", Settings: "≡", "Help Center": "☏", Admin: "≡" };
+icons["Daily Challenge"] = "";
 icons.Mistakes = "↺";
 icons["Formula Reference"] = "∑";
 const allQuestions = () => [...starterQuestions, ...(store.content.questions || [])];
@@ -94,7 +98,7 @@ const esc = value => String(value ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;
 const pc = value => `${Math.round(Number(value) || 0)}%`;
 const initials = name => (name || "M").split(/\s+/).slice(0, 2).map(part => part[0]).join("").toUpperCase();
 const answerDisplay = value => value && typeof value === "object" ? Object.entries(value).map(([key, answer]) => `${key}=${answer}`).join("; ") : String(value ?? "");
-const topicInfo = name => topics.find(topic => topic.name === name) || { icon: "✦", color: "blue", subtopics: [] };
+const topicInfo = name => topics.find(topic => topic.name === name) || { icon: "", color: "blue", subtopics: [] };
 const getScore = topic => user?.profile.topicScores?.[topic] ?? Math.round((user?.profile.attempts || []).filter(a => a.topic === topic).reduce((sum, attempt) => sum + (attempt.correct ? 100 : 0), 0) / Math.max(1, (user?.profile.attempts || []).filter(a => a.topic === topic).length));
 
 function toast(message, style = "success") {
@@ -114,8 +118,8 @@ function recommendations() {
     const lesson = allLessons().find(item => item.topic === topic.name);
     return { topic: topic.name, title: lesson?.title || `${topic.name} fundamentals`, reason: `Your ${topic.name.toLowerCase()} practice score is ${getScore(topic.name)}%.` };
   });
-  if (repeated) picks.unshift({ topic: "Algebra", title: "Solving quadratic equations", reason: "A few more algebra examples can help these methods stick." });
-  return picks.length ? picks.slice(0, 3) : [{ topic: "Algebra", title: "Solving quadratic equations", reason: "Build confidence with a worked example and some practice." }, { topic: "Probability", title: "Getting started with probability", reason: "Practise the foundations at your own pace." }];
+  if (repeated) picks.unshift({ topic: "Algebra", title: "Solving quadratic equations", reason: "Review algebra: you have repeated mistakes in this topic." });
+  return picks.length ? picks.slice(0, 3) : [{ topic: "Algebra", title: "Solving quadratic equations", reason: "Worked examples and practice for quadratic equations." }, { topic: "Probability", title: "Getting started with probability", reason: "Review basic probability and try the practice questions." }];
 }
 
 const learningGoals = ["Improve my grade", "Prepare for exams", "Understand difficult topics", "Practice mathematics", "Aim for A/A*"];
@@ -232,7 +236,7 @@ function shell(content) {
           ["YOUR ACCOUNT", ["Settings", "Help Center"]]
         ].map(([label, items]) => `<div class="nav-group"><div class="nav-label">${label}</div>${items.map(item => `<a href="#${encodeURIComponent(item)}" class="nav-link ${route === item ? "active" : ""}" ${route === item ? 'aria-current="page"' : ""}><span class="nav-icon" aria-hidden="true">${icons[item]}</span>${item}</a>`).join("")}</div>`).join("")}</nav>
         <div class="sidebar-bottom">
-          <div class="streak-mini"><span data-live-flame="navigation">${streakFlame(currentStreak(user.profile), "navigation")}</span><span><strong><span data-live-streak>${currentStreak(user.profile)}</span> day streak</strong><small>Keep the momentum going</small></span></div>
+          <div class="streak-mini"><span data-live-flame="navigation">${streakFlame(currentStreak(user.profile), "navigation")}</span><span><strong><span data-live-streak>${currentStreak(user.profile)}</span> day streak</strong><small>Daily practice</small></span></div>
           <a class="profile-mini" href="#Profile"><span class="avatar">${esc(initials(user.profile.name))}</span><span><strong>${esc(user.profile.name)}</strong><small>Level ${user.profile.level} learner</small></span><span class="profile-dots">···</span></a>
           <div class="offline-note"><span class="online-dot"></span> ${cloudEnabled ? "Your learning syncs to your account" : "Your learning is saved on this device"}</div>
         </div>
@@ -240,7 +244,8 @@ function shell(content) {
       <button class="sidebar-peek" id="sidebar-peek" aria-controls="sidebar" aria-expanded="false" aria-label="Show navigation" title="Move here or click to open the menu"><span aria-hidden="true">›</span><span aria-hidden="true">Menu</span></button>
       <button class="mobile-overlay" id="close-menu" aria-label="Close menu"></button>
       <main class="main-area">
-        <header class="topbar"><button class="icon-button menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="true" aria-label="Hide navigation">☰</button><div class="breadcrumb">MathMaster <span>/</span> <strong>${esc(route === "Lesson" ? "Lesson" : route)}</strong></div>${liveClockMarkup()}<div class="top-actions">${!["Exam", "ExamReview", "OfficialPaper"].includes(route) ? `<button class="button button-secondary student-help-button" id="student-help-button" data-guide="restart" aria-haspopup="dialog">? <span>Help</span></button>` : ""}<span class="top-xp">✦ <strong>${user.profile.xp} XP</strong></span><button class="avatar avatar-small" aria-label="Open profile" data-route="Profile">${esc(initials(user.profile.name))}</button></div></header>
+        <header class="topbar"><button class="icon-button menu-toggle" id="menu-toggle" aria-controls="sidebar" aria-expanded="true" aria-label="Hide navigation">☰</button><div class="breadcrumb">MathMaster <span>/</span> <strong>${esc(route === "Lesson" ? "Lesson" : route)}</strong></div>${liveClockMarkup()}<div class="top-actions">${!["Exam", "ExamReview", "OfficialPaper"].includes(route) ? `<button class="button button-secondary student-help-button" id="student-help-button" data-guide="restart" aria-haspopup="dialog">? <span>Help</span></button>` : ""}<span class="top-xp"><strong>${user.profile.xp} XP</strong></span><button class="avatar avatar-small" aria-label="Open profile" data-route="Profile">${esc(initials(user.profile.name))}</button></div></header>
+        <nav class="page-shortcuts" aria-label="Main pages">${[["Home","Dashboard"],["Learn","Lessons"],["Practice","Practice"],["Exams","Exams"],["Settings","Settings"]].map(([destination,label]) => `<a href="#${destination}" ${route === destination ? 'aria-current="page"' : ""}>${label}</a>`).join("")}</nav>
         <div class="page-content">${content}</div>
         <footer class="footer"><span>© ${new Date().getFullYear()} MathMaster IGCSE</span><span>Original learning content · No external services required</span></footer>
       </main>
@@ -265,11 +270,15 @@ function pageHeader(eyebrow, title, subtitle, action = "") {
 
 function renderWelcome() {
   if (isAdminPortal) { renderAdminWelcome(); return; }
-  app.innerHTML = `<main class="welcome">
-    <section class="welcome-story"><a class="brand brand-light" href="#"><span class="brand-mark">M</span><span>MathMaster <small>IGCSE MATHEMATICS</small></span></a><div class="welcome-copy"><span class="welcome-pill"><span class="online-dot"></span> YOUR PERSONAL MATHS COMPANION</span><h1>Master IGCSE<br><em>Mathematics.</em></h1><p>Learn. Practice. Improve. Prepare for your exam.</p><div class="welcome-cta"><button class="button button-light" data-action="start-learning">Start Learning <span>→</span></button><button class="welcome-test-link" data-action="guest-diagnostic">Take Diagnostic Test</button></div><div class="welcome-points"><span>✦ Clear, step-by-step lessons</span><span>✦ Practice made for your goals</span><span>✦ Your progress, always saved here</span></div></div><div class="welcome-foot">Made for curious minds, everywhere.</div></section>
-    <section class="welcome-form-wrap"><div class="welcome-form-card"><div class="form-tabs"><button class="form-tab active" data-auth-mode="register">Create account</button><button class="form-tab" data-auth-mode="login">Log in</button></div><div id="auth-panel"></div><p class="privacy-note">${cloudEnabled ? "🔒 Your account and progress are stored with Supabase. The administrator can manage learner accounts and progress." : "🔒 Your account and learning data stay in this browser. No third-party services."}</p></div></section>
-  </main>
-  <section class="public-preview"><div class="preview-inner"><div class="eyebrow">YOUR MATHS, YOUR WAY</div><h2>Everything you need to make progress.</h2><p>One calm, clear place to learn, practise and feel ready for exam day.</p><div class="preview-features">${[["📚", "Learn", "Friendly lessons and worked examples"], ["✏", "Practice", "Instant checking and helpful methods"], ["▣", "Exams", "Original quizzes and timed mocks"], ["◷", "Progress", "See your scores grow by topic"], ["▦", "Study Plan", "A routine shaped around your goal"], ["✧", "Achievements", "Celebrate the little wins"]].map(([icon, title, text]) => `<article><span>${icon}</span><strong>${title}</strong><small>${text}</small></article>`).join("")}</div><div class="preview-topics"><strong>Explore the curriculum</strong>${topics.map(topic => `<span>${esc(topic.name)}</span>`).join("")}</div><div class="preview-how"><span class="eyebrow">HOW IT WORKS</span><h2>One step at a time.</h2><div>${["Take a diagnostic test", "Discover your strengths and weaknesses", "Learn each topic", "Practice questions", "Take exams", "Review mistakes", "Improve your score"].map((step, i) => `<span><i>${i + 1}</i>${step}</span>`).join("")}</div></div></div></section>`;
+  app.innerHTML = `<main class="public-site">
+    <header class="public-header"><a class="brand" href="./index.html"><span class="brand-mark">M</span><span>MathMaster<small>IGCSE MATHEMATICS</small></span></a><nav aria-label="Explore MathMaster"><a href="#curriculum">Curriculum</a><a href="#learning-tools">Learning tools</a><a href="#study-method">How it works</a></nav><div class="public-account-actions"><button class="button button-secondary" data-auth-mode="login" data-auth-scroll>Log in</button><button class="button button-primary" data-action="start-learning">Get started</button></div></header>
+    <section class="study-hero"><div class="study-hero-inner"><div class="study-hero-copy"><span class="eyebrow">IGCSE MATHEMATICS · CORE & EXTENDED</span><h1>Understand the maths.<br><span>Be ready for your exam.</span></h1><p>Build your knowledge with clear lessons, practise at your level, and prepare with timed exams. Your next step starts here.</p><div class="hero-actions"><button class="button button-primary" data-action="start-learning">Start learning</button><button class="button button-secondary" data-action="guest-diagnostic">Take a diagnostic test</button></div><p class="hero-note">Lessons, practice and progress in one place.</p></div><aside class="hero-course-panel" aria-label="Mathematics course overview"><div class="course-panel-heading"><span class="eyebrow">YOUR COURSE</span><span class="course-tier">Core & Extended</span></div><h2>IGCSE Mathematics</h2><p>A structured path from the fundamentals to exam practice.</p><div class="course-outline">${[["01", "Build your understanding", "Structured lessons and worked examples"], ["02", "Put it into practice", "Topic questions with answer explanations"], ["03", "Prepare for exam day", "Timed mocks and real past papers"]].map(([number,title,text]) => `<div><span class="course-step">${number}</span><div><strong>${title}</strong><small>${text}</small></div></div>`).join("")}</div><a class="course-panel-link" href="#curriculum">Explore all eight topics <span aria-hidden="true">→</span></a></aside></div></section>
+    <section class="learning-section" id="learning-tools"><div class="public-section-heading"><span class="eyebrow">LEARN WITH A PURPOSE</span><h2>The tools for your next step.</h2><p>Choose what you need today, then keep building on your progress.</p></div><div class="learning-paths">${[["01", "Learn a topic", "Follow clear explanations and worked examples through the IGCSE curriculum.", "Browse the curriculum", "#curriculum"], ["02", "Practise your skills", "Check your answers, review the method and focus on the topics you find difficult.", "Start practising", ""], ["03", "Prepare for your exam", "Work through timed mock exams and find real past papers for your next session.", "Get started", ""]].map(([number,title,text,link,href]) => `<article><span class="path-number">${number}</span><h3>${title}</h3><p>${text}</p>${href ? `<a href="${href}">${link} <span aria-hidden="true">→</span></a>` : `<button class="text-button" data-action="start-learning">${link} <span aria-hidden="true">→</span></button>`}</article>`).join("")}</div></section>
+    <section class="curriculum-section" id="curriculum"><div class="public-section-heading"><span class="eyebrow">EXPLORE THE CURRICULUM</span><h2>Every topic. One clear course.</h2><p>Start with the fundamentals or return to a topic you want to strengthen.</p></div><div class="public-curriculum">${topics.map((topic,index) => `<button class="public-topic" data-action="start-learning"><span class="topic-number">${String(index+1).padStart(2,"0")}</span><span><strong>${esc(topic.name)}</strong><small>${esc(topic.subtopics.slice(0,3).join(" · "))}</small></span><span class="topic-link-arrow" aria-hidden="true">→</span></button>`).join("")}</div></section>
+    <section class="study-method" id="study-method"><div class="public-section-heading"><span class="eyebrow">HOW IT WORKS</span><h2>Make your study time count.</h2></div><div class="method-steps">${[["Find your starting point", "Take a diagnostic test to see which topics need your attention."], ["Learn and practise", "Work through lessons and questions, with explanations when you need them."], ["Review your progress", "Use your results and study plan to decide what to work on next."]].map(([title,text],index) => `<article><span>${index+1}</span><h3>${title}</h3><p>${text}</p></article>`).join("")}</div></section>
+    <section class="account-section" id="account"><div class="account-intro"><span class="eyebrow">YOUR LEARNING ACCOUNT</span><h2>Start here.<br>Keep your progress.</h2><p>Save your lessons, practice results and study plan, so you can pick up where you left off.</p><ul><li>Set your target grade</li><li>Follow your topic progress</li><li>Plan your weekly study</li></ul></div><div class="welcome-form-wrap"><div class="welcome-form-card"><div class="form-tabs"><button class="form-tab active" data-auth-mode="register">Create account</button><button class="form-tab" data-auth-mode="login">Log in</button></div><div id="auth-panel"></div><p class="privacy-note">${cloudEnabled ? "Your account and progress are stored with Supabase. The administrator can manage learner accounts and progress." : "Your account and learning data stay in this browser."}</p></div></div></section>
+    <footer class="public-footer"><a class="brand" href="./index.html"><span class="brand-mark">M</span><span>MathMaster<small>IGCSE MATHEMATICS</small></span></a><span>© ${new Date().getFullYear()} MathMaster IGCSE</span><a href="./admin.html">Admin sign-in</a></footer>
+  </main>`;
   renderAuthForm("register");
 }
 
@@ -277,10 +286,10 @@ function renderAuthForm(mode) {
   const panel = document.querySelector("#auth-panel");
   if (!panel) return;
   panel.innerHTML = mode === "login" ? `
-    <div class="eyebrow">WELCOME BACK</div><h2>Pick up where you left off.</h2><p class="muted">Log in to continue your maths journey.</p>
+    <div class="eyebrow">WELCOME BACK</div><h2>Pick up where you left off.</h2><p class="muted">Log in to continue your lessons and practice.</p>
     <form id="login-form" class="form-stack"><label>Email address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label><label>Password<input name="password" type="password" required autocomplete="current-password" minlength="8" placeholder="At least 8 characters"></label><button class="button button-primary button-wide">Log in <span>→</span></button></form>
     <a class="text-button portal-entry-link" href="./admin.html">Admin sign-in ↗</a>${cloudEnabled ? `<details><summary>Forgot password?</summary><form id="cloud-reset-email" class="form-stack"><label>Email<input name="email" type="email" autocomplete="email" required></label><button class="button button-secondary">Send recovery link</button></form></details>` : ""}`
-    : `<div class="eyebrow">YOUR NEXT CHAPTER</div><h2>Make maths your superpower.</h2><p class="muted">Create your account and set a goal worth working towards.</p>
+    : `<div class="eyebrow">GET STARTED</div><h2>Create your learning account.</h2><p class="muted">Set your course details and save your progress.</p>
     <form id="register-form" class="form-stack">
       <div class="input-row"><label>Your name<input name="name" required autocomplete="name" placeholder="Alex Morgan"></label><label>Email address<input name="email" type="email" required autocomplete="email" placeholder="you@example.com"></label></div>
       <div class="input-row"><label>Exam board<select name="board"><option>Cambridge IGCSE</option><option>Edexcel International GCSE</option></select></label><label>Target grade<select name="target"><option>A*</option><option selected>A</option><option>B</option><option>C</option><option>D</option><option>Other</option></select></label></div>
@@ -308,24 +317,20 @@ function renderHome() {
   const nextLesson = allLessons().find(item => !user.profile.completedLessons.includes(item.id)) || allLessons()[0];
   const diagnosticDone = user.profile.diagnosticDone;
   const recs = recommendations();
-  return `${pageHeader("YOUR LEARNING SPACE", `Good ${greeting()}, ${esc(user.profile.name.split(" ")[0])} <span class="wave">✦</span>`, "A little practice today goes a long way.", `<a class="button button-secondary" href="#Profile">View profile <span>→</span></a>`)}
-    ${!diagnosticDone ? `<section class="diagnostic-banner"><div class="diagnostic-icon">◎</div><div><span class="eyebrow">A GREAT PLACE TO START</span><h2>Discover your maths strengths</h2><p>Take a quick diagnostic and get a study plan shaped around you.</p></div><button class="button button-light" data-action="start-diagnostic">Take diagnostic <span>→</span></button><div class="banner-decoration">x²</div></section>` : ""}
-    <div class="stat-grid">
-      <article class="stat-card"><span class="stat-icon mint">✦</span><span class="stat-label">Total XP</span><strong class="stat-number">${user.profile.xp.toLocaleString()}</strong><span class="stat-caption">Level ${user.profile.level} · ${Math.max(0, user.profile.level * 250 - user.profile.xp)} XP to next</span><div class="tiny-progress"><i style="width:${user.profile.xp % 250 / 2.5}%"></i></div></article>
-      <article class="stat-card"><span class="stat-icon streak-stat-icon" data-live-flame="home">${streakFlame(currentStreak(user.profile), "home")}</span><span class="stat-label">Current streak</span><strong class="stat-number"><span data-live-streak>${currentStreak(user.profile)}</span><small> days</small></strong><span class="stat-caption">Every day is a fresh start</span></article>
-      <article class="stat-card"><span class="stat-icon lilac">▤</span><span class="stat-label">Lessons done</span><strong class="stat-number">${completed}<small> / ${allLessons().length}</small></strong><span class="stat-caption">Keep building your knowledge</span><div class="tiny-progress"><i style="width:${Math.min(100, completed / allLessons().length * 100)}%"></i></div></article>
-      <article class="stat-card"><span class="stat-icon sky">✎</span><span class="stat-label">Questions answered</span><strong class="stat-number">${attempts}</strong><span class="stat-caption">${user.profile.mistakes.filter(item => !item.improved).length} to review</span></article>
+  return `${pageHeader("DASHBOARD", `Hi, ${esc(user.profile.name.split(" ")[0])}`, "Choose a lesson, practise a topic or check your results.", `<a class="button button-secondary" href="#Progress">View progress</a>`)}
+    ${!diagnosticDone ? `<section class="diagnostic-banner"><div><h2>Find your starting point</h2><p>Take a diagnostic test to see which topics to work on.</p></div><button class="button button-light" data-action="start-diagnostic">Take diagnostic test</button></section>` : ""}
+    <div class="stat-grid plain-stats">
+      <article class="stat-card"><span class="stat-label">Level</span><strong class="stat-number">${user.profile.level}</strong><span class="stat-caption">${user.profile.xp.toLocaleString()} XP · ${Math.max(0, user.profile.level * 250 - user.profile.xp)} to next level</span><div class="tiny-progress"><i style="width:${user.profile.xp % 250 / 2.5}%"></i></div></article>
+      <article class="stat-card"><span class="stat-label">Study streak</span><strong class="stat-number"><span data-live-streak>${currentStreak(user.profile)}</span><small> days</small></strong><span class="stat-caption">Consecutive days of practice</span></article>
+      <article class="stat-card"><span class="stat-label">Lessons completed</span><strong class="stat-number">${completed}<small> / ${allLessons().length}</small></strong><div class="tiny-progress"><i style="width:${Math.min(100, completed / allLessons().length * 100)}%"></i></div></article>
+      <article class="stat-card"><span class="stat-label">Questions answered</span><strong class="stat-number">${attempts}</strong><span class="stat-caption">${user.profile.mistakes.filter(item => !item.improved).length} mistakes to review</span></article>
     </div>
     <div class="dashboard-grid"><div class="dashboard-main">
-      <section class="section-card today-card"><div class="section-title-row"><div><span class="eyebrow">YOUR NEXT STEP</span><h2>Pick up where you left off</h2></div><a class="subtle-link" href="#Learn">All lessons <span>→</span></a></div>
-        <div class="next-lesson"><div class="topic-art ${topicInfo(nextLesson.topic).color}">${topicInfo(nextLesson.topic).icon}</div><div class="next-lesson-info"><div class="chip chip-${topicInfo(nextLesson.topic).color}">${esc(nextLesson.topic)}</div><h3>${esc(nextLesson.title)}</h3><p>${esc(nextLesson.objective)}</p></div><button class="round-arrow" data-lesson="${esc(nextLesson.id)}" aria-label="Open lesson">→</button></div>
-      </section>
-      <section class="section-card topic-card"><div class="section-title-row"><div><span class="eyebrow">YOUR CURRICULUM</span><h2>Explore a topic</h2></div><a class="subtle-link" href="#Learn">View all <span>→</span></a></div><div class="topic-grid">${topics.map(topic => `<a class="topic-tile" href="#Learn" data-topic-filter="${esc(topic.name)}"><span class="topic-icon ${topic.color}">${topic.icon}</span><span><strong>${esc(topic.name)}</strong><small>${topic.subtopics.length} topics · ${user.profile.topicScores[topic.name] !== undefined ? `${pc(user.profile.topicScores[topic.name])} score` : "Start exploring"}</small></span><span class="tile-arrow">↗</span></a>`).join("")}</div></section>
-      <section class="section-card recommendations"><div class="section-title-row"><div><span class="eyebrow">A LITTLE EXTRA HELP</span><h2>Recommended for you</h2></div><span class="recommend-mark">✦</span></div><div class="recommend-list">${recs.map(rec => `<button class="recommend-item" data-topic-filter="${esc(rec.topic)}" data-go-learn><span class="recommend-icon">${topicInfo(rec.topic).icon}</span><span><strong>${esc(rec.title)}</strong><small>${esc(rec.reason)}</small></span><span>→</span></button>`).join("")}</div></section>
-    </div><aside class="dashboard-side"><section class="daily-card"><div class="daily-top"><span class="eyebrow">DAILY MATHS CHALLENGE</span><span class="daily-spark">✧</span></div><h2>Two minutes.<br>One little win.</h2><p>A fresh question is ready for you today.</p><div class="daily-question"><span class="chip chip-yellow">Number · Easy</span><p>${esc(daily.text)}</p><div class="daily-date-notice" id="daily-date-notice" hidden></div><form id="daily-form"><input name="answer" inputmode="decimal" placeholder="Your answer" aria-label="Daily challenge answer" required ${user.profile.dailyChallenges.includes(todayKey()) ? "disabled" : ""}><button class="button button-dark button-wide" ${user.profile.dailyChallenges.includes(todayKey()) ? "disabled" : ""}>${user.profile.dailyChallenges.includes(todayKey()) ? "Completed today ✓" : "Check answer →"}</button></form></div><div class="daily-footer"><span>+15 XP on completion</span><span>◷ 2 min</span></div></section>
-    <section class="mini-plan"><div class="section-title-row"><div><span class="eyebrow">YOUR STUDY PLAN</span><h3>${user.profile.studyPlan ? "Keep your rhythm" : "Build a routine"}</h3></div><span class="plan-icon">▦</span></div><p>${user.profile.studyPlan ? `${user.profile.studyPlan.days} study days · ${user.profile.studyPlan.minutes} min a day` : "A simple plan makes big goals feel achievable."}</p><a href="#Study%20Plan" class="subtle-link">${user.profile.studyPlan ? "See this week's plan" : "Create your study plan"} <span>→</span></a></section>
-    <section class="quote-card"><span>“</span><p>It always seems impossible until it’s done.</p><small>— A good reminder for maths</small><div class="quote-decoration">∑</div></section>
-    </aside></div>`;
+      <section class="section-card today-card"><div class="section-title-row"><h2>Next lesson</h2><a class="subtle-link" href="#Learn">All lessons</a></div><div class="next-lesson plain-next-lesson"><div class="next-lesson-info"><span class="lesson-topic-label">${esc(nextLesson.topic)}</span><h3>${esc(nextLesson.title)}</h3><p>${esc(nextLesson.objective)}</p></div><button class="button button-primary" data-lesson="${esc(nextLesson.id)}">Open lesson</button></div></section>
+      <section class="section-card topic-card"><div class="section-title-row"><h2>Topics</h2><a class="subtle-link" href="#Learn">View course</a></div><div class="topic-grid plain-topic-grid">${topics.map((topic,index) => `<a class="topic-tile" href="#Learn" data-topic-filter="${esc(topic.name)}"><span class="topic-index">${String(index+1).padStart(2,"0")}</span><span><strong>${esc(topic.name)}</strong><small>${topic.subtopics.length} syllabus points${user.profile.topicScores[topic.name] !== undefined ? ` · ${pc(user.profile.topicScores[topic.name])} score` : ""}</small></span><span class="tile-arrow" aria-hidden="true">→</span></a>`).join("")}</div></section>
+      <section class="section-card recommendations"><div class="section-title-row"><h2>Suggested lessons</h2></div><div class="recommend-list">${recs.map(rec => `<button class="recommend-item" data-topic-filter="${esc(rec.topic)}" data-go-learn><span><strong>${esc(rec.title)}</strong><small>${esc(rec.reason)}</small></span><span aria-hidden="true">→</span></button>`).join("")}</div></section>
+    </div><aside class="dashboard-side"><section class="daily-card"><h2>Daily question</h2><div class="daily-question"><span class="lesson-topic-label">Number · Easy</span><p>${esc(daily.text)}</p><div class="daily-date-notice" id="daily-date-notice" hidden></div><form id="daily-form"><input name="answer" inputmode="decimal" placeholder="Your answer" aria-label="Daily challenge answer" required ${user.profile.dailyChallenges.includes(todayKey()) ? "disabled" : ""}><button class="button button-primary button-wide" ${user.profile.dailyChallenges.includes(todayKey()) ? "disabled" : ""}>${user.profile.dailyChallenges.includes(todayKey()) ? "Completed today" : "Check answer"}</button></form></div><div class="daily-footer"><span>15 XP</span><span>About 2 minutes</span></div></section>
+    <section class="mini-plan"><h3>Study plan</h3><p>${user.profile.studyPlan ? `${user.profile.studyPlan.days} study days · ${user.profile.studyPlan.minutes} minutes per day` : "Choose which days and topics to study."}</p><a href="#Study%20Plan" class="subtle-link">${user.profile.studyPlan ? "View study plan" : "Create study plan"}</a></section></aside></div>`;
 }
 
 function greeting() { const hour = new Date().getHours(); return hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening"; }
@@ -339,7 +344,7 @@ function renderLearn() {
   const completeCount = user.profile.completedLessons.length;
   const unit = topics.find(topic => topic.name === lessonTopicFilter);
   const action = `<a href="#Formula%20Reference" class="button button-secondary">Formula Reference <span>∑</span></a>`;
-  return `${pageHeader("THE CURRICULUM", "Learn something new.", "A complete IGCSE course: choose a unit, open a lesson, work through examples, then practise.", action)}
+  return `${pageHeader("THE CURRICULUM", "Lessons", "A complete IGCSE course: choose a unit, open a lesson, work through examples, then practise.", action)}
     <form id="curriculum-search" class="curriculum-search"><label><span>⌕</span><input name="query" value="${esc(lessonSearch)}" placeholder="Search lessons, e.g. quadratic, percentage, circle…" aria-label="Search lessons"></label><button class="button button-primary">Search</button>${lessonSearch ? `<button class="text-button" type="button" data-action="clear-curriculum-search">Clear</button>` : ""}<span class="progress-pill">${completeCount} of ${all.length} lessons complete</span></form>
     ${isUnitView ? `<div class="unit-grid">${topics.map(topic => {
       const unitLessons = all.filter(lesson => lesson.topic === topic.name);
@@ -367,7 +372,7 @@ function renderFormulaReference() {
         return item.formula && (!searchTerm || (matcher ? matcher.test(content) : content.toLowerCase().includes(searchTerm)));
       }),
   })).filter(topic => topic.formulas.length);
-  return `${pageHeader("QUICK REFERENCE", "Formula reference.", "A locally stored guide to key rules and relationships across the IGCSE course.", `<a href="#Learn" class="button button-secondary">← Back to curriculum</a>`)}
+  return `${pageHeader("QUICK REFERENCE", "Formula reference", "A locally stored guide to key rules and relationships across the IGCSE course.", `<a href="#Learn" class="button button-secondary">← Back to curriculum</a>`)}
     <form id="formula-search" class="curriculum-search"><label><span>⌕</span><input name="query" value="${esc(formulaSearch)}" placeholder="Search formulas or topics…" aria-label="Search formulas"></label><button class="button button-primary">Search</button>${formulaSearch ? `<button class="text-button" type="button" data-action="clear-formula-search">Clear</button>` : ""}</form>
     <div class="formula-reference-units">${filtered.map(topic => `<details class="formula-unit" open><summary><span class="curriculum-icon ${topic.color}">${topic.icon}</span><strong>${esc(topic.name)}</strong><span>${topic.formulas.length} references</span></summary><div class="formula-reference-list">${topic.formulas.map(item => `<article><span>${esc(item.subtopic)}</span><strong>${esc(item.formula)}</strong></article>`).join("")}</div></details>`).join("") || `<div class="empty-state">No formulas match that search. Try a topic name or a mathematical term.</div>`}</div>`;
 }
@@ -408,16 +413,16 @@ function renderPractice() {
     questionIndex = 0;
     return renderPractice();
   }
-  return `${pageHeader("PRACTISE", isMistake ? "A second look." : "Practice makes progress.", isMistake ? "Give these tricky questions another go." : "One question at a time. Take your time, and don't be afraid to try.")}
+  return `${pageHeader("PRACTISE", isMistake ? "Review mistakes" : "Practice", isMistake ? "Answer a saved question again and review its method." : "Choose a topic, answer the question and check the explanation.")}
     <div class="practice-wrap"><div class="practice-meta"><span class="chip chip-${topicInfo(current.topic).color}">${esc(current.topic)} · ${esc(current.subtopic)}</span><span class="difficulty-label difficulty-${current.difficulty.toLowerCase()}">${esc(current.difficulty)}</span><span class="practice-counter">Question ${questionIndex + 1} of ${questionList.length}</span></div>
     <div class="practice-progress"><i style="width:${(questionIndex + 1) / questionList.length * 100}%"></i></div>
     <section class="question-card"><div class="question-mark">${current.marks} ${current.marks === 1 ? "MARK" : "MARKS"}</div><h2>${esc(current.text)}</h2>${questionVisual(current)}
       ${current.type === "multipart" ? `<form id="practice-answer-form">${renderPaperParts(current, practiceAnswer || {})}<button class="button button-primary" ${questionResult ? "disabled" : ""}>Check answers →</button></form>` : current.type === "multipleChoice" ? `<div class="answer-options">${current.options.map((option, i) => `<label class="answer-option ${questionResult && checkAnswer(current, option) ? "option-correct" : ""}"><input type="radio" name="practice-answer" value="${esc(option)}" ${questionResult && checkAnswer(current, option) ? "checked" : ""} ${questionResult ? "disabled" : ""}><span class="option-letter">${String.fromCharCode(65 + i)}</span>${esc(option)}</label>`).join("")}</div>` : current.type === "trueFalse" ? `<div class="answer-options">${["True", "False"].map(option => `<label class="answer-option ${questionResult && checkAnswer(current, option) ? "option-correct" : ""}"><input type="radio" name="practice-answer" value="${option.toLowerCase()}" ${questionResult && checkAnswer(current, option) ? "checked" : ""} ${questionResult ? "disabled" : ""}><span class="option-letter">${option[0]}</span>${option}</label>`).join("")}</div>` : current.type === "matching" ? `<div class="matching-list">${current.matchingPairs.map(pair => `<label><strong>${esc(pair.left)}</strong><span>=</span><select data-practice-match="${esc(pair.left)}" ${questionResult ? "disabled" : ""}><option value="">Choose a match</option>${current.matchingOptions.map(option => `<option value="${esc(option)}" ${normalizeOption(practiceAnswer?.[pair.left]) === normalizeOption(option) ? "selected" : ""}>${esc(option)}</option>`).join("")}</select></label>`).join("")}</div>` : `<form id="practice-answer-form" class="answer-form"><label class="answer-input-label">Your answer<input name="answer" autocomplete="off" inputmode="text" placeholder="Type your answer here…" ${questionResult ? "disabled" : ""} required></label><span class="answer-unit">${esc(current.unit || "")}</span><button class="button button-primary" ${questionResult ? "disabled" : ""}>Check answer <span>→</span></button></form>`}
       ${["multipleChoice", "trueFalse", "matching"].includes(current.type) && !questionResult ? `<button class="button button-primary check-choice" data-action="check-choice">Check answer <span>→</span></button>` : ""}
-      ${showHint && !questionResult ? `<div class="hint-box"><span>💡 HINT</span>${esc(current.hint)}</div>` : ""}
-      ${questionResult ? `<div class="answer-feedback ${questionResult.correct ? "correct" : "incorrect"}"><strong>${questionResult.correct ? "Correct! +10 XP ✦" : "Not quite."}</strong>${!questionResult.correct ? `<p><b>Correct answer:</b> ${esc(answerDisplay(current.answer))}</p>` : ""}<p>${esc(current.explanation)}</p><small>Method: ${esc(current.explanation)}</small></div>` : ""}
-      <div class="question-actions">${!questionResult ? `<button class="text-button" data-action="hint">💡 Show hint</button><button class="text-button" data-action="solution">Show solution</button>` : `<button class="text-button" data-action="try-again">↻ Try again</button><button class="button button-primary" data-action="next-question">${questionIndex + 1 === questionList.length ? "Finish practice" : "Next question"} <span>→</span></button>`}</div>
-    </section><div class="practice-bottom"><button class="text-button" data-action="shuffle-questions">↻ Try a different set</button><span>✦ Correct answers earn 10 XP</span><a href="#Mistakes">Review mistakes →</a></div></div>`;
+      ${showHint && !questionResult ? `<div class="hint-box"><span>HINT</span>${esc(current.hint)}</div>` : ""}
+      ${questionResult ? `<div class="answer-feedback ${questionResult.correct ? "correct" : "incorrect"}"><strong>${questionResult.correct ? "Correct! +10 XP" : "Not quite."}</strong>${!questionResult.correct ? `<p><b>Correct answer:</b> ${esc(answerDisplay(current.answer))}</p>` : ""}<p>${esc(current.explanation)}</p><small>Method: ${esc(current.explanation)}</small></div>` : ""}
+      <div class="question-actions">${!questionResult ? `<button class="text-button" data-action="hint">Show hint</button><button class="text-button" data-action="solution">Show solution</button>` : `<button class="text-button" data-action="try-again">↻ Try again</button><button class="button button-primary" data-action="next-question">${questionIndex + 1 === questionList.length ? "Finish practice" : "Next question"} <span>→</span></button>`}</div>
+    </section><div class="practice-bottom"><button class="text-button" data-action="shuffle-questions">↻ Try a different set</button><span>Correct answers earn 10 XP</span><a href="#Mistakes">Review mistakes →</a></div></div>`;
 }
 
 function questionResultFor(question, answer) {
@@ -464,7 +469,7 @@ function renderBank() {
     <section class="bank-list">${page.items.map((q, i) => `<article class="bank-item"><span class="bank-number">${String(page.start + i + 1).padStart(2, "0")}</span><div class="bank-question"><div class="bank-meta"><span class="chip chip-${topicInfo(q.topic).color}">${esc(q.topic)}</span><span>${esc(q.subtopic)}${q.level ? ` · ${esc(q.level)}` : ""}</span><span class="difficulty-label difficulty-${q.difficulty.toLowerCase()}">${esc(q.difficulty)}</span></div><h3>${esc(q.text)}</h3><div class="bank-detail">${q.marks} ${q.marks === 1 ? "mark" : "marks"} · ~${q.time} min · ${q.calculator === false ? "Non-calculator" : "Calculator"} · ${esc(q.type === "multipleChoice" ? "Multiple choice" : q.type === "numerical" ? "Numerical answer" : q.type === "trueFalse" ? "True / false" : q.type === "matching" ? "Matching" : "Short answer")}</div></div><button class="button button-secondary" data-practise-id="${esc(q.id)}">Practise <span>→</span></button></article>`).join("") || `<div class="empty-state">No questions match those filters. Try choosing a different level or topic.</div>`}</section>
     ${renderBankPager(page, "bank-page")}
     <p class="bank-source-note">Original IGCSE-style practice, including numerical variants. For real exam questions and official mark schemes, <a href="${papaCambridgeUrl}" target="_blank" rel="noopener noreferrer">open PapaCambridge ↗</a>.</p>
-    <button class="button button-secondary" data-action="generate-equation">✦ Generate a fresh question</button>`;
+    <button class="button button-secondary" data-action="generate-equation">Generate a fresh question</button>`;
 }
 
 function renderDaily() {
@@ -472,8 +477,8 @@ function renderDaily() {
   const daily = makeDailyQuestion(todayKey());
   const done = user.profile.dailyChallenges.includes(todayKey());
   const solved = user.profile.dailyAnswer;
-  return `${pageHeader("A LITTLE DAILY WIN", "Daily Maths Challenge", "A small, satisfying puzzle. New challenge each day; no rush.", `<span class="progress-pill">✦ +15 XP</span>`)}
-    <div class="daily-page-card"><div class="daily-page-decoration">%</div><span class="chip chip-yellow">NUMBER · EASY · 1 MARK</span><div class="eyebrow">TODAY'S CHALLENGE · ${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div><h2>${esc(daily.text)}</h2><p>Take a moment to work it out. There’s no timer here.</p><div class="daily-date-notice" id="daily-date-notice" hidden></div><form id="daily-form" class="daily-answer-form"><input name="answer" inputmode="decimal" placeholder="Your answer" required ${done ? "disabled" : ""}><button class="button button-primary" ${done ? "disabled" : ""}>${done ? "Completed ✓" : "Check answer →"}</button></form>${done ? `<div class="answer-feedback ${solved ? "correct" : "incorrect"}"><strong>${solved ? "You got it! +15 XP ✦" : "Challenge completed."}</strong><p>${esc(daily.explanation)}</p><small>Answer: ${esc(daily.answer)}</small></div>` : ""}<div class="daily-footer"><span>☼ A daily streak starts with today</span><span>◷ Around 2 minutes</span></div></div>`;
+  return `${pageHeader("A LITTLE DAILY WIN", "Daily Maths Challenge", "Answer one question each day. Completed questions earn 15 XP.", `<span class="progress-pill">+15 XP</span>`)}
+    <div class="daily-page-card"><div class="daily-page-decoration">%</div><span class="chip chip-yellow">NUMBER · EASY · 1 MARK</span><div class="eyebrow">TODAY'S CHALLENGE · ${new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}</div><h2>${esc(daily.text)}</h2><p>Take a moment to work it out. There’s no timer here.</p><div class="daily-date-notice" id="daily-date-notice" hidden></div><form id="daily-form" class="daily-answer-form"><input name="answer" inputmode="decimal" placeholder="Your answer" required ${done ? "disabled" : ""}><button class="button button-primary" ${done ? "disabled" : ""}>${done ? "Completed ✓" : "Check answer →"}</button></form>${done ? `<div class="answer-feedback ${solved ? "correct" : "incorrect"}"><strong>${solved ? "You got it! +15 XP" : "Challenge completed."}</strong><p>${esc(daily.explanation)}</p><small>Answer: ${esc(daily.answer)}</small></div>` : ""}<div class="daily-footer"><span>☼ A daily streak starts with today</span><span>◷ Around 2 minutes</span></div></div>`;
 }
 
 function startExam(type) {
@@ -736,10 +741,10 @@ function renderExamResult() {
   if (result.mode === "upload") return renderUploadedResult();
   const isDiagnostic = result.diagnostic;
   const strengths = Object.entries(result.topicScores).sort((a, b) => b[1] - a[1]);
-  return `<div class="result-page"><div class="result-hero"><span class="result-confetti">✦</span><span class="eyebrow">${isDiagnostic ? "YOUR DIAGNOSTIC RESULTS" : "TEST COMPLETE"}</span><h1>${isDiagnostic ? "Your starting point." : "Look how far you’ve come."}</h1><p>${isDiagnostic ? "Here’s a first look at your maths strengths and where to focus next." : "Your results are ready. Every question is a chance to grow."}</p><div class="result-score">${result.percentage}<small>%</small></div><span class="estimated-grade">${result.methodSummary?.complete ? "Reviewed working practice score" : result.paper ? "Final-answer practice score" : `Estimated grade · ${esc(estimatedGrade(result.percentage))}`}</span></div>
+  return `<div class="result-page"><div class="result-hero"><span class="result-confetti"></span><span class="eyebrow">${isDiagnostic ? "YOUR DIAGNOSTIC RESULTS" : "TEST COMPLETE"}</span><h1>${isDiagnostic ? "Your starting point." : "Test results"}</h1><p>${isDiagnostic ? "Here’s a first look at your maths strengths and where to focus next." : "Your results are ready. Review your answers and topic scores below."}</p><div class="result-score">${result.percentage}<small>%</small></div><span class="estimated-grade">${result.methodSummary?.complete ? "Reviewed working practice score" : result.paper ? "Final-answer practice score" : `Estimated grade · ${esc(estimatedGrade(result.percentage))}`}</span></div>
     <div class="result-stats"><div><strong>${result.earned} / ${result.totalMarks}</strong><small>Final-answer marks</small></div><div><strong>${result.totalMarks - result.earned}</strong><small>Marks to pick up</small></div><div><strong>${result.duration}</strong><small>Minutes used</small></div><div><strong>+${result.xp}</strong><small>XP earned</small></div></div>
-    <section class="section-card result-topic-card"><div class="section-title-row"><div><span class="eyebrow">TOPIC PERFORMANCE</span><h2>A little insight goes a long way</h2></div></div>${strengths.map(([topic, score]) => `<div class="topic-score-row"><span>${esc(topic)}</span><div class="score-track"><i class="score-${topicInfo(topic).color}" style="width:${score}%"></i></div><strong>${score}%</strong></div>`).join("")}<p class="strength-copy">Your strongest topic: <strong>${esc(strengths[0]?.[0] || "—")}</strong> · Most room to grow: <strong>${esc(strengths.at(-1)?.[0] || "—")}</strong></p></section>
-    <section class="result-recommendation"><span class="recommend-icon">✦</span><div><span class="eyebrow">A GOOD NEXT STEP</span><h3>${esc(recommendations()[0].title)}</h3><p>${esc(recommendations()[0].reason)}</p></div><a href="#Learn" class="button button-primary">Explore lessons →</a></section>
+    <section class="section-card result-topic-card"><div class="section-title-row"><div><span class="eyebrow">TOPIC PERFORMANCE</span><h2>Topic results</h2></div></div>${strengths.map(([topic, score]) => `<div class="topic-score-row"><span>${esc(topic)}</span><div class="score-track"><i class="score-${topicInfo(topic).color}" style="width:${score}%"></i></div><strong>${score}%</strong></div>`).join("")}<p class="strength-copy">Your strongest topic: <strong>${esc(strengths[0]?.[0] || "—")}</strong> · Most room to grow: <strong>${esc(strengths.at(-1)?.[0] || "—")}</strong></p></section>
+    <section class="result-recommendation"><span class="recommend-icon"></span><div><span class="eyebrow">A GOOD NEXT STEP</span><h3>${esc(recommendations()[0].title)}</h3><p>${esc(recommendations()[0].reason)}</p></div><a href="#Learn" class="button button-primary">Explore lessons →</a></section>
     ${renderSolutionReview()}<div class="result-actions"><button class="button button-secondary" data-action="review-mistakes">Review mistakes</button><button class="button button-primary" data-action="finish-exam">Back to my dashboard →</button></div></div>`;
 }
 
@@ -782,17 +787,17 @@ function submitExam() {
 }
 
 function renderExams() {
-  return `${pageHeader("TEST YOUR KNOW-HOW", "A little exam practice?", "Try a short quiz, focus on a topic, or sit a complete IGCSE-style practice paper.", `<span class="progress-pill">No pressure · Just practice</span>`)}
-    <section class="exam-intro"><div class="exam-intro-copy"><span class="eyebrow">YOUR EXAM PRACTICE SPACE</span><h2>Build exam confidence,<br>one question at a time.</h2><p>Choose a real past paper by year and session, or practise a fresh original mock. Your practice result is not an official exam grade.</p></div><div class="exam-graphic"><div class="graphic-paper"><span>IGCSE</span><strong>∑</strong><i>Practice paper</i><i>12 questions · 25 min</i><i>✦ Original questions</i></div><span class="graphic-star">✧</span></div></section>
+  return `${pageHeader("TEST YOUR KNOW-HOW", "Exams", "Try a short quiz, focus on a topic, or sit a complete IGCSE-style practice paper.", `<span class="progress-pill">Practice scores</span>`)}
+    <section class="exam-intro"><div class="exam-intro-copy"><span class="eyebrow">YOUR EXAM PRACTICE SPACE</span><h2>Choose a practice test</h2><p>Choose a real past paper by year and session, or practise a fresh original mock. Your practice result is not an official exam grade.</p></div></section>
     ${renderPastPaperCatalog(pastFilters, pastPageNumber)}${renderPastPaperHistory(user.profile.officialPapers)}
     ${user.profile.paperDraft ? `<section class="section-card resume-working-card"><h2>Your saved test</h2><p>Your answers and uploaded pages are saved. The original test timer continues from its start time.</p><button class="button button-primary" data-action="resume-working">Resume test →</button></section>` : ""}${renderRealPaperChoices()}${renderPaperChoices()}<h2 class="section-heading">Shorter practice sessions</h2><div class="exam-choice-grid">
       <article class="exam-choice-card featured"><span class="exam-choice-icon">▤</span><span class="chip chip-blue">SUGGESTED START</span><h3>Diagnostic test</h3><p>A short question from every topic to help you find your starting point.</p><div class="choice-meta">8 topics · ~10 min · No timer</div><button class="button button-primary button-wide" data-action="start-diagnostic">Start diagnostic →</button></article>
-      <article class="exam-choice-card"><span class="exam-choice-icon">◷</span><span class="chip chip-violet">QUICK PRACTICE</span><h3>Short mock</h3><p>A quick mixed set to warm up and test what you know.</p><div class="choice-meta">8 questions · 15 min · Timed</div><button class="button button-secondary button-wide" data-start-exam="short">Start short mock →</button></article>
-      <article class="exam-choice-card"><span class="exam-choice-icon">▣</span><span class="chip chip-orange">FULL PRACTICE</span><h3>Mixed topic test</h3><p>Settle in for a longer mixed practice paper.</p><div class="choice-meta">20 questions · 45 min · Timed</div><button class="button button-secondary button-wide" data-start-exam="full">Start full mock →</button></article>
-      <article class="exam-choice-card"><span class="exam-choice-icon">⌖</span><span class="chip chip-green">FOCUS SESSION</span><h3>Topic test</h3><p>Spend a little time on the topic you choose.</p><div class="select-filter"><span>CHOOSE TOPIC</span><select id="topic-exam-select">${topics.map(t => `<option>${t.name}</option>`).join("")}</select></div><button class="button button-secondary button-wide" data-action="start-topic-exam">Start topic test →</button></article>
+      <article class="exam-choice-card"><span class="exam-choice-icon">◷</span><span class="chip chip-violet">QUICK PRACTICE</span><h3>Short mock</h3><p>A timed set of questions across the course.</p><div class="choice-meta">8 questions · 15 min · Timed</div><button class="button button-secondary button-wide" data-start-exam="short">Start short mock →</button></article>
+      <article class="exam-choice-card"><span class="exam-choice-icon">▣</span><span class="chip chip-orange">FULL PRACTICE</span><h3>Mixed topic test</h3><p>A timed test covering several topics.</p><div class="choice-meta">20 questions · 45 min · Timed</div><button class="button button-secondary button-wide" data-start-exam="full">Start full mock →</button></article>
+      <article class="exam-choice-card"><span class="exam-choice-icon">⌖</span><span class="chip chip-green">FOCUS SESSION</span><h3>Topic test</h3><p>Test your knowledge of one topic.</p><div class="select-filter"><span>CHOOSE TOPIC</span><select id="topic-exam-select">${topics.map(t => `<option>${t.name}</option>`).join("")}</select></div><button class="button button-secondary button-wide" data-action="start-topic-exam">Start topic test →</button></article>
     </div>
     <section class="section-card past-paper-notice"><span class="topic-icon yellow">▧</span><div><span class="eyebrow">PRACTISE RESPONSIBLY</span><h3>Looking for past papers?</h3><p>Open official Cambridge past papers and mark schemes, or practise a fresh original paper here.</p><a href="#Past%20Papers" class="subtle-link">Visit past papers <span>→</span></a></div></section>
-    ${user.profile.exams.length ? `<section class="section-card"><div class="section-title-row"><div><span class="eyebrow">YOUR RECENT TESTS</span><h2>Progress, not perfection</h2></div></div>${user.profile.exams.slice(0, 4).map(item => `<div class="bank-item"><span class="bank-number">✓</span><div class="bank-question"><h3>${esc(item.title || (item.diagnostic ? "Diagnostic test" : "Practice mock exam"))}</h3><div class="bank-detail">${new Date(item.date).toLocaleDateString()} · ${item.duration} min · ${item.mode === "upload" ? `${item.reviewedParts || 0} parts reviewed` : `${item.correct}/${item.total} correct`}</div></div><strong class="exam-score">${Number.isFinite(item.percentage) ? `${item.percentage}%` : "Pending review"} <small>${item.mode === "upload" ? "reviewed practice" : "practice"}</small>${item.review ? `<button class="text-button" data-open-working-review="${esc(item.id)}">Review working →</button>` : ""}</strong></div>`).join("")}</section>` : ""}`;
+    ${user.profile.exams.length ? `<section class="section-card"><div class="section-title-row"><div><span class="eyebrow">YOUR RECENT TESTS</span><h2>Recent tests</h2></div></div>${user.profile.exams.slice(0, 4).map(item => `<div class="bank-item"><span class="bank-number">✓</span><div class="bank-question"><h3>${esc(item.title || (item.diagnostic ? "Diagnostic test" : "Practice mock exam"))}</h3><div class="bank-detail">${new Date(item.date).toLocaleDateString()} · ${item.duration} min · ${item.mode === "upload" ? `${item.reviewedParts || 0} parts reviewed` : `${item.correct}/${item.total} correct`}</div></div><strong class="exam-score">${Number.isFinite(item.percentage) ? `${item.percentage}%` : "Pending review"} <small>${item.mode === "upload" ? "reviewed practice" : "practice"}</small>${item.review ? `<button class="text-button" data-open-working-review="${esc(item.id)}">Review working →</button>` : ""}</strong></div>`).join("")}</section>` : ""}`;
 }
 
 function renderProgress() {
@@ -800,17 +805,17 @@ function renderProgress() {
   const attempts = user.profile.attempts;
   const average = attempts.length ? Math.round(attempts.filter(a => a.correct).length / attempts.length * 100) : 0;
   const recent = user.profile.exams.filter(item => Number.isFinite(item.percentage)).slice(0, 5);
-  return `${pageHeader("LOOK HOW FAR YOU'VE COME", "Your progress.", "Every lesson, every question, every small step adds up.", `<span class="progress-pill">Level ${user.profile.level} · ${user.profile.xp} XP</span>`)}
-    <div class="progress-summary"><article><span class="eyebrow">OVERALL ACCURACY</span><strong>${attempts.length ? `${average}%` : "—"}</strong><small>${attempts.length ? `${attempts.length} questions tried` : "Try a question to get started"}</small></article><article><span class="eyebrow">CURRENT STREAK</span><strong><span data-live-streak>${currentStreak(user.profile)}</span><small> days</small></strong><small>One day at a time</small></article><article><span class="eyebrow">LESSONS COMPLETED</span><strong>${user.profile.completedLessons.length}<small> / ${allLessons().length}</small></strong><small>Keep up the lovely work</small></article><article><span class="eyebrow">MOCK EXAMS</span><strong>${user.profile.exams.filter(x => !x.diagnostic).length}</strong><small>${user.profile.exams.length ? `Best: ${user.profile.exams.some(x => Number.isFinite(x.percentage)) ? `${Math.max(...user.profile.exams.filter(x => Number.isFinite(x.percentage)).map(x => x.percentage))}%` : "Awaiting review"}` : "Your first is waiting"}</small></article></div>
+  return `${pageHeader("LOOK HOW FAR YOU'VE COME", "Progress", "Review your topic scores, completed lessons and test results.", `<span class="progress-pill">Level ${user.profile.level} · ${user.profile.xp} XP</span>`)}
+    <div class="progress-summary"><article><span class="eyebrow">OVERALL ACCURACY</span><strong>${attempts.length ? `${average}%` : "—"}</strong><small>${attempts.length ? `${attempts.length} questions tried` : "Try a question to get started"}</small></article><article><span class="eyebrow">CURRENT STREAK</span><strong><span data-live-streak>${currentStreak(user.profile)}</span><small> days</small></strong><small>Consecutive days of practice</small></article><article><span class="eyebrow">LESSONS COMPLETED</span><strong>${user.profile.completedLessons.length}<small> / ${allLessons().length}</small></strong><small>Completed lessons</small></article><article><span class="eyebrow">MOCK EXAMS</span><strong>${user.profile.exams.filter(x => !x.diagnostic).length}</strong><small>${user.profile.exams.length ? `Best: ${user.profile.exams.some(x => Number.isFinite(x.percentage)) ? `${Math.max(...user.profile.exams.filter(x => Number.isFinite(x.percentage)).map(x => x.percentage))}%` : "Awaiting review"}` : "No tests completed"}</small></article></div>
     <div class="progress-layout"><section class="section-card topic-performance"><div class="section-title-row"><div><span class="eyebrow">BY TOPIC</span><h2>Where you shine</h2></div></div>${scores.map(t => `<div class="topic-score-row"><span class="topic-score-name"><i class="score-dot ${t.color}"></i>${esc(t.name)}</span><div class="score-track"><i class="score-${t.color}" style="width:${t.count ? t.score : 0}%"></i></div><strong>${t.count ? `${t.score}%` : "—"}</strong><small>${t.count} tried</small></div>`).join("")}</section>
-    <section class="section-card xp-card"><div class="section-title-row"><div><span class="eyebrow">YOUR LEARNING JOURNEY</span><h2>XP & levels</h2></div><span class="xp-spark">✦</span></div><div class="level-display"><span class="level-medal">✦</span><div><span>LEVEL ${user.profile.level}</span><strong>${user.profile.xp} XP</strong></div></div><div class="level-track"><i style="width:${user.profile.xp % 250 / 2.5}%"></i></div><div class="level-caption"><span>Level ${user.profile.level}</span><span>${user.profile.level * 250 - user.profile.xp} XP to level ${user.profile.level + 1}</span></div><div class="xp-breakdown"><span>✓ Questions answered <strong>${user.profile.questionsCompleted}</strong></span><span>✓ Lessons completed <strong>${user.profile.completedLessons.length}</strong></span><span>✓ Tests taken <strong>${user.profile.exams.length}</strong></span></div></section></div>
+    <section class="section-card xp-card"><div class="section-title-row"><div><span class="eyebrow">XP AND LEVELS</span><h2>XP & levels</h2></div><span class="xp-spark"></span></div><div class="level-display"><span class="level-medal"></span><div><span>LEVEL ${user.profile.level}</span><strong>${user.profile.xp} XP</strong></div></div><div class="level-track"><i style="width:${user.profile.xp % 250 / 2.5}%"></i></div><div class="level-caption"><span>Level ${user.profile.level}</span><span>${user.profile.level * 250 - user.profile.xp} XP to level ${user.profile.level + 1}</span></div><div class="xp-breakdown"><span>✓ Questions answered <strong>${user.profile.questionsCompleted}</strong></span><span>✓ Lessons completed <strong>${user.profile.completedLessons.length}</strong></span><span>✓ Tests taken <strong>${user.profile.exams.length}</strong></span></div></section></div>
     <section class="section-card score-history"><div class="section-title-row"><div><span class="eyebrow">YOUR TEST HISTORY</span><h2>Every test is a step forward</h2></div><a class="subtle-link" href="#Exams">Take a test →</a></div>${recent.length ? `<div class="history-chart">${recent.slice().reverse().map((item, i) => `<div class="history-bar"><span>${item.percentage}%</span><i style="height:${Math.max(6, item.percentage)}%"></i><small>${new Date(item.date).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small></div>`).join("")}</div>` : `<div class="empty-state">Your first practice test will show here. You’ve got this. <a href="#Exams">Take a test →</a></div>`}</section>`;
 }
 
 function renderMistakes() {
   const mistakes = user.profile.mistakes || [];
-  return `${pageHeader("A CHANCE TO GROW", "Mistakes make great teachers.", "Review a tricky question, notice the method, and try it again.", `<span class="progress-pill">${mistakes.filter(item => !item.improved).length} to revisit</span>`)}
-    <div class="mistake-list">${mistakes.length ? mistakes.map((item, i) => `<article class="mistake-card ${item.improved ? "mistake-improved" : ""}"><div class="mistake-card-top"><span class="chip chip-${topicInfo(item.topic).color}">${esc(item.topic)} · ${esc(item.subtopic)}</span><span class="mistake-date">${new Date(item.date).toLocaleDateString()} ${item.improved ? "· ✓ Improved" : ""}</span></div><h3>${esc(item.text)}</h3><div class="mistake-answer"><span>Your answer <strong>${esc(answerDisplay(item.studentAnswer || "No answer"))}</strong></span><span>Answer <strong>${esc(answerDisplay(item.answer))}</strong></span></div><p>${esc(item.explanation)}</p><button class="button button-secondary" data-practise-id="${esc(item.id)}" data-mistake-index="${i}">Practise again <span>→</span></button></article>`).join("") : `<div class="empty-state"><span class="empty-icon">✦</span><h3>No mistakes to review. Yet.</h3><p>Every question you get wrong will be kept here so you can revisit it.</p><a href="#Practice" class="button button-primary">Try some practice →</a></div>`}</div>`;
+  return `${pageHeader("A CHANCE TO GROW", "Mistakes", "Review incorrect answers and practise those questions again.", `<span class="progress-pill">${mistakes.filter(item => !item.improved).length} to revisit</span>`)}
+    <div class="mistake-list">${mistakes.length ? mistakes.map((item, i) => `<article class="mistake-card ${item.improved ? "mistake-improved" : ""}"><div class="mistake-card-top"><span class="chip chip-${topicInfo(item.topic).color}">${esc(item.topic)} · ${esc(item.subtopic)}</span><span class="mistake-date">${new Date(item.date).toLocaleDateString()} ${item.improved ? "· ✓ Improved" : ""}</span></div><h3>${esc(item.text)}</h3><div class="mistake-answer"><span>Your answer <strong>${esc(answerDisplay(item.studentAnswer || "No answer"))}</strong></span><span>Answer <strong>${esc(answerDisplay(item.answer))}</strong></span></div><p>${esc(item.explanation)}</p><button class="button button-secondary" data-practise-id="${esc(item.id)}" data-mistake-index="${i}">Practise again <span>→</span></button></article>`).join("") : `<div class="empty-state"><span class="empty-icon"></span><h3>No mistakes to review</h3><p>Every question you get wrong will be kept here so you can revisit it.</p><a href="#Practice" class="button button-primary">Try some practice →</a></div>`}</div>`;
 }
 
 function renderStudyPlan() {
@@ -822,7 +827,7 @@ function renderStudyPlan() {
   const selectedLabel = selectedStudyDate ? parseStudyDate(selectedStudyDate).toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" }) : "";
   const settings = !saved || editingStudyPlan ? `<section class="section-card plan-settings calendar-settings"><div class="section-title-row"><div><span class="eyebrow">MAKE IT YOURS</span><h2>Set your study rhythm</h2></div>${saved ? '<button class="text-button" data-study-action="cancel-settings">Cancel</button>' : ""}</div><p>Set a weekly routine. You can change individual days or repeat an edited session every week.</p><form id="study-plan-form" class="form-stack"><div class="input-row"><label>Exam date<input type="date" name="examDate" value="${esc(plan.examDate)}"></label><label>Target grade<select name="target">${["A*", "A", "B", "C", "D", "Other"].map(x => `<option ${plan.target === x ? "selected" : ""}>${x}</option>`).join("")}</select></label></div><div class="input-row"><label>Study days per week <strong class="range-value">${Math.max(1, plan.days)}</strong><input type="range" name="days" min="1" max="7" value="${Math.max(1, plan.days)}"></label><label>Minutes per study day <strong class="range-value">${plan.minutes}</strong><input type="range" name="minutes" min="15" max="120" step="15" value="${plan.minutes}"></label></div><label>Usual start time<input type="time" name="startTime" value="${esc(plan.startTime)}" required></label><button class="button button-primary">Done · Save my plan →</button></form></section>` : "";
   const editor = selectedStudyDate ? `<section class="section-card calendar-session-editor" id="study-session-editor"><div class="section-title-row"><div><span class="eyebrow">EDIT YOUR TIMETABLE</span><h2>${esc(selectedLabel)}</h2></div><button class="text-button" data-study-action="close-session">Close</button></div><form id="study-session-form" class="form-stack"><label>What will you study?<input name="activity" value="${esc(selected?.activity || "Practice mathematics")}" maxlength="100"></label><div class="input-row"><label>Start time<input type="time" name="startTime" value="${esc(selected?.startTime || plan.startTime)}"></label><label>Duration (minutes)<input name="minutes" type="number" min="5" max="240" value="${selected?.minutes || plan.minutes}"></label></div><label class="study-rest-choice"><input type="checkbox" name="rest" ${selected ? "" : "checked"}> Make this a rest day</label><label>Apply changes to<select name="scope"><option value="date">Only this date</option><option value="weekday">Every ${studyDayNames[(parseStudyDate(selectedStudyDate).getDay() + 6) % 7]}</option></select></label><div class="calendar-editor-actions"><button class="button button-primary">Save session →</button>${Object.hasOwn(plan.overrides, selectedStudyDate) ? '<button class="button button-secondary" type="button" data-study-action="restore-session">Use weekly timetable</button>' : ""}</div></form>${selected ? `<button class="text-button" data-study-action="complete-session">${plan.completions[selectedStudyDate] ? "Undo completion" : "✓ Mark session complete"}</button>` : ""}</section>` : "";
-  return `${pageHeader("YOUR STUDY TIMETABLE", "Your study plan.", "Plan your learning, see your month and adjust any session whenever you need.", saved && !editingStudyPlan ? '<button class="button button-secondary" data-study-action="edit-settings">Edit my plan</button>' : "")}
+  return `${pageHeader("YOUR STUDY TIMETABLE", "Study plan", "Plan your learning, see your month and adjust any session whenever you need.", saved && !editingStudyPlan ? '<button class="button button-secondary" data-study-action="edit-settings">Edit my plan</button>' : "")}
     ${settings}<section class="section-card study-calendar"><div class="section-title-row"><div><span class="eyebrow">${saved ? "YOUR PERSONALISED PLAN" : "A STARTING POINT FOR YOU"}</span><h2>${heading}</h2><p class="muted">${plan.days} study days each week · Target ${esc(plan.target)}${plan.examDate ? ` · Exam ${esc(parseStudyDate(plan.examDate).toLocaleDateString())}` : ""}</p></div><div class="calendar-month-controls"><button class="icon-button" data-study-month="-1" aria-label="Previous month">←</button><h3 aria-live="polite">${esc(monthLabel)}</h3><button class="icon-button" data-study-month="1" aria-label="Next month">→</button><button class="button button-secondary" data-study-action="today">Today</button></div></div><p class="calendar-help">Select any date to edit its activity, time or duration. Your weekly timetable repeats${plan.examDate ? " until your exam date" : " each week"}.</p>
     ${editor}<div class="calendar-scroll"><div class="calendar-weekdays" aria-hidden="true">${studyDayNames.map(day => `<span>${day.slice(0, 3)}</span>`).join("")}</div><div class="calendar-grid">${calendarDays(studyMonth).map(date => {
       const key = studyDateKey(date), session = studySessionOn(plan, key), exam = key === plan.examDate;
@@ -848,9 +853,9 @@ function renderAchievements() {
     const questions = leaderboardPeriod === "all" ? item.profile.questionsCompleted : (item.profile.attempts || []).filter(attempt => new Date(attempt.date) >= since).length;
     return { ...item, leaderboardXp: xp, leaderboardQuestions: questions };
   }).sort((a, b) => b.leaderboardXp - a.leaderboardXp).slice(0, 10);
-  return `${pageHeader("CELEBRATE YOUR WINS", "Look at you go.", "Every little win deserves a moment. Here are the milestones you’re working towards.", `<span class="progress-pill">✧ ${unlocked.length} of ${badgeRules.length} badges</span>`)}
+  return `${pageHeader("CELEBRATE YOUR WINS", "Achievements", "Track the milestones you have completed and the next requirements.", `<span class="progress-pill"> ${unlocked.length} of ${badgeRules.length} badges</span>`)}
     <section class="section-card badges-section"><div class="section-title-row"><div><span class="eyebrow">YOUR BADGES</span><h2>Little milestones, big pride</h2></div></div><div class="badge-grid">${badgeRules.map(b => `<article class="badge-card ${unlocked.includes(b.id) ? "unlocked" : "locked"}"><span class="badge-icon">${b.icon}</span>${unlocked.includes(b.id) ? `<span class="badge-earned">EARNED</span>` : `<span class="badge-lock">LOCKED</span>`}<h3>${esc(b.name)}</h3><p>${esc(b.description)}</p></article>`).join("")}</div></section>
-    <section class="section-card leaderboard"><div class="section-title-row"><div><span class="eyebrow">A LITTLE FRIENDLY MOTIVATION</span><h2>Community leaderboard</h2></div><select aria-label="Leaderboard period" data-leaderboard-period><option ${leaderboardPeriod === "all" ? "selected" : ""} value="all">All-time</option><option ${leaderboardPeriod === "week" ? "selected" : ""} value="week">Weekly</option><option ${leaderboardPeriod === "month" ? "selected" : ""} value="month">Monthly</option></select></div><div class="leaderboard-note">${cloudEnabled ? "Your personal progress is shown here. Other learners’ private profiles are protected." : "This demo leaderboard includes accounts saved on this device only."}</div>${rankings.length ? rankings.map((item, i) => `<div class="leader-row ${item.email === user.email ? "leader-self" : ""}"><span class="leader-rank">${["🥇", "🥈", "🥉"][i] || `0${i + 1}`}</span><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span class="leader-name">${esc(item.profile.name)} ${item.email === user.email ? "<small>You</small>" : ""}</span><span class="leader-questions">${item.leaderboardQuestions} questions</span><strong>${item.leaderboardXp} XP</strong></div>`).join("") : `<div class="empty-state">Your leaderboard appears here.</div>`}<label class="hide-leaderboard"><input type="checkbox" data-action="hide-leaderboard" ${user.profile.hideLeaderboard ? "checked" : ""}> Hide me from the leaderboard</label></section>`;
+    <section class="section-card leaderboard"><div class="section-title-row"><div><span class="eyebrow">A LITTLE FRIENDLY MOTIVATION</span><h2>Community leaderboard</h2></div><select aria-label="Leaderboard period" data-leaderboard-period><option ${leaderboardPeriod === "all" ? "selected" : ""} value="all">All-time</option><option ${leaderboardPeriod === "week" ? "selected" : ""} value="week">Weekly</option><option ${leaderboardPeriod === "month" ? "selected" : ""} value="month">Monthly</option></select></div><div class="leaderboard-note">${cloudEnabled ? "Your personal progress is shown here. Other learners’ private profiles are protected." : "This demo leaderboard includes accounts saved on this device only."}</div>${rankings.length ? rankings.map((item, i) => `<div class="leader-row ${item.email === user.email ? "leader-self" : ""}"><span class="leader-rank">${String(i + 1).padStart(2, "0")}</span><span class="avatar avatar-small">${esc(initials(item.profile.name))}</span><span class="leader-name">${esc(item.profile.name)} ${item.email === user.email ? "<small>You</small>" : ""}</span><span class="leader-questions">${item.leaderboardQuestions} questions</span><strong>${item.leaderboardXp} XP</strong></div>`).join("") : `<div class="empty-state">Your leaderboard appears here.</div>`}<label class="hide-leaderboard"><input type="checkbox" data-action="hide-leaderboard" ${user.profile.hideLeaderboard ? "checked" : ""}> Hide me from the leaderboard</label></section>`;
 }
 
 function applyAppearance() {
@@ -860,20 +865,70 @@ function applyAppearance() {
 }
 
 function passwordSettings() {
-  return `<section class="section-card password-section"><span class="eyebrow">ACCOUNT SECURITY</span><h2>Reset your password</h2><form id="password-form" class="form-stack"><label>Current password<input type="password" name="current" required minlength="8" autocomplete="current-password"></label><div class="input-row"><label>New password<input type="password" name="next" required minlength="8" autocomplete="new-password"></label><label>Confirm new password<input type="password" name="confirmation" required minlength="8" autocomplete="new-password"></label></div><small>Use at least 8 characters. Your previous password will stop working.</small><button class="button button-primary" ${passwordSaving ? "disabled" : ""}>Update password</button></form><p class="muted">Forgot your current password? <a class="subtle-link" href="#Help%20Center">Ask the admin for a reset →</a></p></section>`;
+  return `<section class="section-card password-section"><span class="eyebrow">ACCOUNT SECURITY</span><h2>Change password</h2><form id="password-form" class="form-stack"><label>Current password<input type="password" name="current" required minlength="8" autocomplete="current-password"></label><div class="input-row"><label>New password<input type="password" name="next" required minlength="8" autocomplete="new-password"></label><label>Confirm new password<input type="password" name="confirmation" required minlength="8" autocomplete="new-password"></label></div><small>Use at least 8 characters. Your previous password will stop working.</small><button class="button button-primary" ${passwordSaving ? "disabled" : ""}>Update password</button></form><p class="muted">Forgot your current password? <a class="subtle-link" href="#Help%20Center">Ask the admin for a reset →</a></p></section>`;
+}
+
+function progressResetSettings() {
+  if (user.role === "admin") return "";
+  const backup = progressBackup(user);
+  return `<section class="section-card settings-progress"><h2>Reset learning progress</h2><p class="reset-current-progress">Current progress: level ${user.profile.level} · ${user.profile.xp.toLocaleString()} XP</p><p>Start again at level 1 with 0 XP. This clears completed lessons, question and test history, scores, streaks, achievements and your study plan.</p><p class="muted">Your login, name, course details and appearance settings stay the same. You can undo the latest reset in this browser.</p>${progressResetOpen ? `<form id="progress-reset-form" class="form-stack"><label>Type RESET to confirm<input name="confirmation" pattern="RESET" autocomplete="off" required placeholder="RESET"></label><div class="settings-actions"><button class="button button-danger" ${progressResetSaving ? "disabled" : ""}>Reset to level 1</button><button type="button" class="button button-secondary" data-action="cancel-progress-reset">Cancel</button></div></form>` : `<div class="settings-actions"><button class="button button-danger" data-action="open-progress-reset" ${progressResetSaving ? "disabled" : ""}>Reset progress</button>${backup ? `<button class="button button-secondary" data-action="undo-progress-reset" ${progressResetSaving ? "disabled" : ""}>Undo last reset</button>` : ""}</div>`}</section>`;
 }
 
 function renderSettings() {
   const preferences = readPreferences(user.email);
-  return `${pageHeader("MAKE YOURSELF COMFORTABLE", "Settings.", "Choose how your learning space looks and reads.")}
-    <section class="section-card settings-appearance"><span class="eyebrow">APPEARANCE</span><h2>Theme & text size</h2><form class="form-stack" id="appearance-form"><div class="input-row"><label>Theme<select name="theme" data-preference="theme"><option value="dark" ${preferences.theme === "dark" ? "selected" : ""}>Dark · neon mint</option><option value="light" ${preferences.theme === "light" ? "selected" : ""}>Light · neon green</option></select></label><label>Text size<select name="textSize" data-preference="textSize">${[["standard", "Standard"], ["large", "Large (115%)"], ["largest", "Extra large (130%)"]].map(([value, label]) => `<option value="${value}" ${preferences.textSize === value ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><p class="appearance-sample">Preview: clear explanations, comfortable reading, and a little neon green.</p><p class="muted">Changes save automatically for your account on this browser.</p></form></section>
-    ${passwordSettings()}<section class="section-card"><h2>Need a hand?</h2><p class="muted">Send a question to the admin or replay the website guide.</p><div class="official-paper-actions"><a href="#Help%20Center" class="button button-primary">Open help center →</a><button class="button button-secondary" data-guide="restart">Replay website guide</button></div></section>`;
+  return `${pageHeader("SETTINGS", "Settings", "Manage appearance, password and learning progress.")}
+    <div class="settings-layout"><section class="section-card settings-appearance"><h2>Appearance</h2><form class="form-stack" id="appearance-form"><div class="input-row"><label>Theme<select name="theme" data-preference="theme"><option value="dark" ${preferences.theme === "dark" ? "selected" : ""}>Dark · neon mint</option><option value="light" ${preferences.theme === "light" ? "selected" : ""}>Light · neon green</option></select></label><label>Text size<select name="textSize" data-preference="textSize">${[["standard", "Standard"], ["large", "Large (115%)"], ["largest", "Extra large (130%)"]].map(([value, label]) => `<option value="${value}" ${preferences.textSize === value ? "selected" : ""}>${label}</option>`).join("")}</select></label></div><p class="appearance-sample">Preview: lessons and explanations use this text size.</p><p class="muted">Changes save automatically.</p></form></section>
+    ${passwordSettings()}${progressResetSettings()}<section class="section-card"><h2>Help</h2><p class="muted">Contact the admin or review how the site works.</p><div class="settings-actions"><a href="#Help%20Center" class="button button-secondary">Help center</a><button class="button button-secondary" data-guide="restart">Website guide</button></div></section></div>`;
 }
 
-function supportLog(email) {
-  if (!email) return '<p class="empty-state">Choose a student conversation to reply.</p>';
+async function changeLearningProgress(restore = false) {
+  if (!user || user.role === "admin" || isAdminPortal || route !== "Settings" || progressResetSaving) return;
+  progressResetSaving = true;
+  let before = JSON.parse(JSON.stringify(user.profile));
+  try {
+    if (cloudEnabled) {
+      if (/Syncing|Sync paused/.test(cloudStatus()) || !await refreshCloud()) throw new Error("Finish syncing your progress before resetting it. Use Retry sync, then try again.");
+    }
+    store = readStore();
+    const latest = store.users.find(account => account.email === user.email);
+    if (!latest) throw new Error("Sign in again before changing your progress.");
+    user = latest;
+    before = JSON.parse(JSON.stringify(user.profile));
+    if (restore) restoreLearningProgress(user);
+    else resetLearningProgress(user);
+    updateUser(store, user);
+    if (restore) { try { clearProgressBackup(user); } catch { /* The saved progress is already restored. */ } }
+    clearInterval(examTimer); clearInterval(officialTimer);
+    exam = null; examResult = null; questionList = []; questionIndex = 0;
+    questionResult = null; practiceAnswer = null; officialActiveId = "";
+    editingStudyPlan = false; selectedStudyDate = ""; progressResetOpen = false;
+    toast(restore ? "Previous learning progress restored." : "Progress reset. You are now at level 1 with 0 XP.");
+  } catch (error) {
+    user.profile = before;
+    toast(error.message, "error");
+  } finally {
+    progressResetSaving = false;
+    render();
+  }
+}
+
+function beginSupportSession() {
+  if (isAdminPortal || supportSession?.owner === user.email) return;
+  const previous = supportMessages(user.email, user.email);
+  startSupportGuide(user.email, { restart: true });
+  supportSession = { owner: user.email, previousIds: new Set(previous.map(message => message.id)) };
+}
+
+function sessionMessages(email, previous = false) {
   const messages = supportMessages(user.email, email);
-  return messages.length ? messages.map(message => `<article class="chat-message ${message.senderRole === "admin" ? "from-admin" : "from-student"}"><div><strong>${message.senderRole === "admin" ? message.automated ? "Admin · automatic help" : "Admin" : isAdminPortal ? esc(store.users.find(account => account.email === email)?.profile.name || "Student") : "You"}</strong><time datetime="${esc(message.date)}">${esc(new Date(message.date).toLocaleString())}</time></div><p>${esc(message.body)}</p></article>`).join("") : '<p class="empty-state">No messages yet. Send your first message below.</p>';
+  if (isAdminPortal || supportSession?.owner !== email) return previous ? [] : messages;
+  return messages.filter(message => supportSession.previousIds.has(message.id) === previous);
+}
+
+function supportLog(email, previous = false) {
+  if (!email) return '<p class="empty-state">Choose a student conversation to reply.</p>';
+  const messages = sessionMessages(email, previous);
+  return messages.length ? messages.map(message => `<article class="chat-message ${message.senderRole === "admin" ? "from-admin" : "from-student"}"><div><strong>${message.senderRole === "admin" ? message.automated ? "Admin · automatic help" : "Admin" : isAdminPortal ? esc(store.users.find(account => account.email === email)?.profile.name || "Student") : "You"}</strong><time datetime="${esc(message.date)}">${esc(new Date(message.date).toLocaleString())}</time></div><p>${esc(message.body)}</p></article>`).join("") : `<p class="empty-state">${previous ? 'No previous messages.' : 'Describe your problem below to start a new conversation.'}</p>`;
 }
 
 function supportInbox() {
@@ -894,12 +949,12 @@ function guidedSupportChoices() {
 }
 
 function renderHelpCenter() {
-  if (!isAdminPortal) startSupportGuide(user.email);
+  if (!isAdminPortal) beginSupportSession();
   const email = isAdminPortal ? supportLearner : user.email;
   const learner = store.users.find(account => account.email === email && account.role !== "admin");
-  return `${isAdminPortal ? "" : pageHeader("WE ARE HERE TO HELP", "Help center.", "Ask about studying, using the website or your account.")}
+  return `${isAdminPortal ? "" : pageHeader("WE ARE HERE TO HELP", "Help center", "Ask about studying, using the website or your account.")}
     <p class="support-local-note">${cloudEnabled ? "Your messages are shared privately with the administrator across devices." : "This chat is saved in this browser. The admin can reply from the admin page on the same browser. Messages do not travel to other devices yet."}</p>
-    <div class="support-layout ${isAdminPortal ? "with-inbox" : ""}">${isAdminPortal ? `<aside class="section-card"><h2>Conversations</h2><div id="support-inbox">${supportInbox()}</div></aside>` : ""}<section class="section-card support-chat"><h2>${isAdminPortal ? learner ? `Chat with ${esc(learner.profile.name)}` : "Student support" : "Chat with the admin"}</h2><div id="support-messages" class="support-messages" role="log" aria-live="polite" aria-label="Conversation">${supportLog(email)}</div>${!isAdminPortal ? `<div id="support-options">${guidedSupportChoices()}</div>` : ""}${email && learner ? `<form id="support-message-form" class="form-stack"><label for="support-message">${isAdminPortal ? "Your reply" : "Or describe your problem"}</label><textarea id="support-message" name="message" rows="3" maxlength="2000" required placeholder="Write your message…"></textarea><button class="button button-primary">Send ${isAdminPortal ? "reply" : "message"} →</button></form>` : ""}</section></div>`;
+    <div class="support-layout ${isAdminPortal ? "with-inbox" : ""}">${isAdminPortal ? `<aside class="section-card"><h2>Conversations</h2><div id="support-inbox">${supportInbox()}</div></aside>` : ""}<section class="section-card support-chat"><div class="support-chat-heading"><h2>${isAdminPortal ? learner ? `Chat with ${esc(learner.profile.name)}` : "Student support" : "Chat with the admin"}</h2><button type="button" class="button button-secondary" data-action="quit-chat-center">Quit chat center</button></div>${!isAdminPortal ? `<p class="support-session-note">Each visit starts a new conversation. Previous messages are saved below.</p>` : ""}<div id="support-messages" class="support-messages" role="log" aria-live="polite" aria-label="Conversation">${supportLog(email)}</div>${!isAdminPortal ? `<div id="support-options">${guidedSupportChoices()}</div>` : ""}${!isAdminPortal ? `<details class="support-history"><summary>Previous messages</summary><div id="support-history">${supportLog(email, true)}</div></details>` : ""}${email && learner ? `<form id="support-message-form" class="form-stack"><label for="support-message">${isAdminPortal ? "Your reply" : "Or describe your problem"}</label><textarea id="support-message" name="message" rows="3" maxlength="2000" required placeholder="Write your message…"></textarea><button class="button button-primary">Send ${isAdminPortal ? "reply" : "message"} →</button></form>` : ""}</section></div>`;
 }
 
 function refreshSupport() {
@@ -907,6 +962,8 @@ function refreshSupport() {
   if (log) { log.innerHTML = supportLog(isAdminPortal ? supportLearner : user.email); log.scrollTop = log.scrollHeight; }
   const options = document.querySelector("#support-options");
   if (options && !isAdminPortal && user) options.innerHTML = guidedSupportChoices();
+  const history = document.querySelector("#support-history");
+  if (history && !isAdminPortal && user) history.innerHTML = supportLog(user.email, true);
   const inbox = document.querySelector("#support-inbox");
   if (inbox) inbox.innerHTML = supportInbox();
 }
@@ -939,8 +996,8 @@ function updateLocalClock() {
 
 function renderProfile() {
   const p = user.profile;
-  return `${pageHeader("YOUR SPACE", "Your profile.", "Your goals and progress, all in one place.", `<button class="button button-secondary" data-action="logout">Log out</button>`)}
-    <div class="profile-layout"><section class="section-card profile-card"><div class="profile-cover"><span class="profile-avatar-large">${esc(initials(p.name))}</span><span class="profile-level-pill">✦ Level ${p.level}</span></div><div class="profile-details"><h2>${esc(p.name)}</h2><p>${esc(p.email)}</p><div class="profile-tags"><span class="chip chip-blue">${esc(p.board)}</span><span class="chip chip-violet">Target ${esc(p.target)}</span></div><div class="profile-metrics"><div><strong>${p.xp}</strong><small>Total XP</small></div><div><strong data-live-streak>${currentStreak(p)}</strong><small>Day streak</small></div><div><strong>${p.questionsCompleted}</strong><small>Questions</small></div><div><strong>${p.completedLessons.length}</strong><small>Lessons</small></div></div></div></section>
+  return `${pageHeader("YOUR SPACE", "Profile", "Manage your course details and learning goals.", `<button class="button button-secondary" data-action="logout">Log out</button>`)}
+    <div class="profile-layout"><section class="section-card profile-card"><div class="profile-cover"><span class="profile-avatar-large">${esc(initials(p.name))}</span><span class="profile-level-pill">Level ${p.level}</span></div><div class="profile-details"><h2>${esc(p.name)}</h2><p>${esc(p.email)}</p><div class="profile-tags"><span class="chip chip-blue">${esc(p.board)}</span><span class="chip chip-violet">Target ${esc(p.target)}</span></div><div class="profile-metrics"><div><strong>${p.xp}</strong><small>Total XP</small></div><div><strong data-live-streak>${currentStreak(p)}</strong><small>Day streak</small></div><div><strong>${p.questionsCompleted}</strong><small>Questions</small></div><div><strong>${p.completedLessons.length}</strong><small>Lessons</small></div></div></div></section>
     <section class="section-card edit-profile"><span class="eyebrow">YOUR DETAILS</span><h2>Update your goals</h2><form id="profile-form" class="form-stack"><label>Your name<input name="name" value="${esc(p.name)}" required></label><label>Exam board<select name="board">${["Cambridge IGCSE", "Edexcel International GCSE"].map(x => `<option ${p.board === x ? "selected" : ""}>${x}</option>`).join("")}</select></label><label>Target grade<select name="target">${["A*", "A", "B", "C", "D", "Other"].map(x => `<option ${p.target === x ? "selected" : ""}>${x}</option>`).join("")}</select></label><label>Exam date<input name="examDate" type="date" value="${esc(p.examDate)}"></label>${goalPicker(p.goals || [])}<button class="button button-primary">Save changes <span>→</span></button></form></section></div>
     <section class="section-card profile-exams"><div class="section-title-row"><div><span class="eyebrow">YOUR RESULTS</span><h2>Exam scores</h2></div></div>${p.exams.length ? p.exams.map(ex => `<div class="bank-item"><span class="bank-number">▣</span><div class="bank-question"><h3>${esc(ex.title || (ex.diagnostic ? "Diagnostic test" : "Original mock exam"))}</h3><div class="bank-detail">${new Date(ex.date).toLocaleDateString()} · ${ex.mode === "upload" ? "Reviewed working" : ex.title ? "Final-answer practice score" : `Estimated grade ${esc(ex.grade)}`}</div></div><strong class="exam-score">${Number.isFinite(ex.percentage) ? `${ex.percentage}%` : "Pending review"}</strong>${ex.review ? `<button class="text-button" data-open-working-review="${esc(ex.id)}">Review working →</button>` : ""}</div>`).join("") : `<p class="muted">Take a diagnostic or mock exam to see your scores here.</p>`}</section>
     <section class="section-card"><h2>Settings & help</h2><p class="muted">Change your theme, text size or password, or contact the admin.</p><div class="official-paper-actions"><a class="button button-secondary" href="#Settings">Open settings</a><a class="button button-secondary" href="#Help%20Center">Help center</a></div></section>`;
@@ -1073,7 +1130,7 @@ function render() {
   }
   applyAppearance();
   clearInterval(officialTimer);
-  if (!user) { renderWelcome(); return; }
+  if (!user) { supportSession = null; renderWelcome(); return; }
   if (isAdminPortal) route = "Admin";
   else if (["Welcome", "Admin"].includes(route)) route = "Home";
   let content;
@@ -1129,6 +1186,7 @@ function startTimer() {
 }
 
 function setRoute(next) {
+  if (!isAdminPortal && route === "Help Center" && next !== "Help Center") supportSession = null;
   clearTimeout(sidebarCloseTimer);
   studentMenuOpen = false;
   desktopMenuOpen = false;
@@ -1200,6 +1258,13 @@ app.addEventListener("click", async event => {
     row.earned = 1; row.feedback = "Equivalent final value checked; reviewer confirmed the original criterion.";
     invalidateOfficialReview(attempt); render(); return;
   }
+  if (target.dataset.action === "quit-chat-center") {
+    if (!user || (isAdminPortal ? window.adminTab !== "support" : route !== "Help Center")) return;
+    supportSession = null;
+    if (isAdminPortal) { supportLearner = ""; window.adminTab = "dashboard"; setRoute("Admin"); }
+    else setRoute("Home");
+    return;
+  }
   if (target.dataset.supportOption) {
     if (!user || isAdminPortal || route !== "Help Center") return;
     try {
@@ -1213,6 +1278,12 @@ app.addEventListener("click", async event => {
     store = readStore(); supportLearner = target.dataset.adminSupport;
     if (!store.users.some(account => account.email === supportLearner && account.role !== "admin")) return;
     window.adminTab = "support"; render(); refreshSupport(); return;
+  }
+  if (["open-progress-reset", "cancel-progress-reset", "undo-progress-reset"].includes(target.dataset.action)) {
+    if (!user || user.role === "admin" || isAdminPortal || route !== "Settings") return;
+    if (target.dataset.action === "undo-progress-reset") await changeLearningProgress(true);
+    else { progressResetOpen = target.dataset.action === "open-progress-reset"; render(); document.querySelector(progressResetOpen ? "#progress-reset-form input" : '[data-action="open-progress-reset"]')?.focus(); }
+    return;
   }
   if (target.dataset.guide) { handleGuideAction(target.dataset.guide); return; }
   if (Object.keys(target.dataset).some(key => key.startsWith("admin")) && (!isAdminPortal || user?.role !== "admin")) return;
@@ -1308,7 +1379,10 @@ app.addEventListener("click", async event => {
   if (target.dataset.action === "bank-reset") { bankFilters = { topic: "All topics", difficulty: "All levels", type: "All types", level: "All tiers", subtopic: "All skills", calculator: "Either", query: "" }; bankPageNumber = 1; render(); }
   if (target.dataset.action === "admin-bank-reset") { adminBankQuery = ""; adminPageNumber = 1; render(); }
   if (target.dataset.route) setRoute(target.dataset.route);
-  if (target.dataset.authMode) renderAuthForm(target.dataset.authMode);
+  if (target.dataset.authMode) {
+    renderAuthForm(target.dataset.authMode);
+    if (target.hasAttribute("data-auth-scroll")) document.querySelector("#account")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
   if (target.dataset.action === "demo-admin") {
     if (!isAdminPortal) return;
     enterAdminPreview();
@@ -1334,7 +1408,7 @@ app.addEventListener("click", async event => {
       recordActivity(user, 25);
       unlockAchievements();
       updateUser(store, user);
-      toast("Lesson complete! +25 XP ✦");
+      toast("Lesson complete! +25 XP");
       render();
     }
   }
@@ -1375,7 +1449,7 @@ app.addEventListener("click", async event => {
   if (target.dataset.action === "try-again") { questionResult = null; practiceAnswer = null; showHint = false; render(); }
   if (target.dataset.action === "next-question") {
     if (questionIndex + 1 < questionList.length) questionIndex++;
-    else if (questionList._mistakeMode) { toast("Lovely work. Keep practising when you’re ready."); setRoute("Mistakes"); return; }
+    else if (questionList._mistakeMode) { toast("Mistake review completed."); setRoute("Mistakes"); return; }
     else { questionList = freshQuestionSet(); questionIndex = 0; }
     questionResult = null; practiceAnswer = null; showHint = false; render();
   }
@@ -1787,9 +1861,13 @@ app.addEventListener("submit", async event => {
       } else {
         route = "Home";
         render();
-        toast("Welcome to MathMaster. Let’s make progress together.");
+        toast("Account created. You can start learning.");
       }
     } catch (error) { toast(error.message, "error"); }
+  }
+  if (form.id === "progress-reset-form") {
+    if (!progressResetOpen || String(values.get("confirmation")) !== "RESET") { toast("Type RESET to confirm.", "error"); return; }
+    await changeLearningProgress(); return;
   }
   if (form.id === "login-form") {
     const email = String(values.get("email")).trim().toLowerCase();
@@ -1841,7 +1919,7 @@ app.addEventListener("submit", async event => {
     recordActivity(user, correct ? 15 : 0);
     updateUser(store, user);
     render();
-    toast(correct ? "That's right! +15 XP ✦" : "Challenge complete. Come back for another tomorrow!");
+    toast(correct ? "That's right! +15 XP" : "Challenge complete. Come back for another tomorrow!");
   }
   if (form.id === "study-plan-form") {
     if (isAdminPortal || !user || route !== "Study Plan") return;

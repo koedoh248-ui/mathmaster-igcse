@@ -26,15 +26,15 @@ export const lessons = [
 ];
 
 export const achievements = [
-  { id: "first-lesson", name: "First steps", description: "Complete your first lesson", icon: "✦", rule: u => u.profile.completedLessons.length >= 1 },
-  { id: "first-ten", name: "Getting warmed up", description: "Answer 10 questions", icon: "✎", rule: u => u.profile.questionsCompleted >= 10 },
-  { id: "century", name: "Century club", description: "Answer 100 questions", icon: "💯", rule: u => u.profile.questionsCompleted >= 100 },
+  { id: "first-lesson", name: "First steps", description: "Complete your first lesson", icon: "1", rule: u => u.profile.completedLessons.length >= 1 },
+  { id: "first-ten", name: "Getting warmed up", description: "Answer 10 questions", icon: "10", rule: u => u.profile.questionsCompleted >= 10 },
+  { id: "century", name: "Century club", description: "Answer 100 questions", icon: "100", rule: u => u.profile.questionsCompleted >= 100 },
   { id: "five-hundred", name: "Five hundred strong", description: "Answer 500 questions", icon: "500", rule: u => u.profile.questionsCompleted >= 500 },
-  { id: "streak-7", name: "Week of wins", description: "Build a 7-day streak", icon: "🔥", rule: u => u.profile.streak >= 7 },
-  { id: "streak-30", name: "Month of momentum", description: "Build a 30-day streak", icon: "🌿", rule: u => u.profile.streak >= 30 },
-  { id: "exam-champ", name: "Exam champion", description: "Complete a mock exam", icon: "🏆", rule: u => u.profile.exams.some(exam => !exam.diagnostic) },
+  { id: "streak-7", name: "Week of wins", description: "Build a 7-day streak", icon: "7", rule: u => u.profile.streak >= 7 },
+  { id: "streak-30", name: "Month of momentum", description: "Build a 30-day streak", icon: "30", rule: u => u.profile.streak >= 30 },
+  { id: "exam-champ", name: "Exam champion", description: "Complete a mock exam", icon: "Exam", rule: u => u.profile.exams.some(exam => !exam.diagnostic) },
   { id: "algebra-master", name: "Algebra master", description: "Score 80% in Algebra", icon: "ƒ", rule: u => (u.profile.topicScores.Algebra ?? 0) >= 80 },
   { id: "geometry-master", name: "Geometry master", description: "Score 80% in Geometry", icon: "△", rule: u => (u.profile.topicScores.Geometry ?? 0) >= 80 },
   { id: "probability-pro", name: "Probability pro", description: "Score 80% in Probability", icon: "◌", rule: u => (u.profile.topicScores.Probability ?? 0) >= 80 },
-  { id: "a-star-goal", name: "A* goal", description: "Set A* as your target and score 80% or more in a mock exam", icon: "★", rule: u => u.profile.target === "A*" && u.profile.exams.some(exam => !exam.diagnostic && exam.percentage >= 80) },
+  { id: "a-star-goal", name: "A* goal", description: "Set A* as your target and score 80% or more in a mock exam", icon: "A*", rule: u => u.profile.target === "A*" && u.profile.exams.some(exam => !exam.diagnostic && exam.percentage >= 80) },
 ];
