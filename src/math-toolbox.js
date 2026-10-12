@@ -126,6 +126,7 @@ export function installMathToolboxes(root) {
         box.querySelector('.math-toolbox-empty').hidden = visible !== 0;
       });
       box.addEventListener('keydown', event => {
+        if (event.key === 'Enter' && event.target.type === 'search') { event.preventDefault(); event.stopPropagation(); }
         if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setOpen(false); field.focus({ preventScroll: true }); }
       });
       field.addEventListener('keydown', event => {
