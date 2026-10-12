@@ -1638,3 +1638,33 @@ button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px soli
   .support-chat .form-stack label { font-size: calc(14px * var(--text-scale, 1)); }
   @media (max-width: 620px) { .support-chat-heading { align-items: flex-start; } .support-chat-heading .button { width: 100%; } }
 }
+
+/* Maths entry toolbox */
+.math-toolbox { display: block; margin: 8px 0 12px; min-width: 0; font-weight: 400; }
+.math-toolbox-toggle { border: 1px solid var(--line); border-radius: 6px; background: var(--paper); color: var(--green); padding: 8px 12px; cursor: pointer; font: inherit; font-size: .85rem; }
+.math-toolbox-panel { margin-top: 8px; padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--text, #e8eff7); width: 100%; box-sizing: border-box; }
+.math-toolbox [hidden] { display: none !important; }
+.math-toolbox-heading, .math-toolbox-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.math-toolbox-panel p, .math-toolbox-footer small { font-size: .8rem; line-height: 1.5; color: var(--muted, #a8b6c7); }
+.math-toolbox-search { display: block; font-size: .8rem; margin: 10px 0; }
+.math-toolbox-search input { width: 100%; margin-top: 5px; box-sizing: border-box; }
+.math-toolbox-items { max-height: 330px; overflow-y: auto; overscroll-behavior: contain; }
+.math-toolbox-group h4 { font-size: .8rem; margin: 16px 0 8px; }
+.math-toolbox-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr)); gap: 7px; }
+.math-toolbox-grid button { min-height: 62px; padding: 8px 5px; border: 1px solid var(--line); border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
+.math-toolbox-grid button:hover, .math-toolbox-grid button:focus-visible { border-color: var(--green); background: rgba(104,231,177,.08); }
+.math-toolbox-grid span, .math-toolbox-grid small { display: block; }
+.math-toolbox-grid span { font: 1.2rem Georgia, serif; margin-bottom: 5px; }
+.math-toolbox-grid small { font-size: .7rem; line-height: 1.3; }
+.math-toolbox-footer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.math-toolbox-footer button { flex-shrink: 0; }
+.math-toolbox-status { display: block; min-height: 1.2em; margin-top: 6px; font-size: .8rem; }
+.paper-answer-line:has(.math-toolbox) { flex-wrap: wrap; }
+.paper-answer-line > .math-toolbox { flex: 1 0 100%; order: 3; }
+@media(max-width: 560px) { .math-toolbox-panel { padding: 12px; } .math-toolbox-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } .math-toolbox-footer { align-items: flex-start; flex-direction: column; } }
+.answer-form:has(> .math-toolbox), .daily-answer-form:has(> .math-toolbox) { flex-wrap: wrap; }
+.answer-form > .math-toolbox, .daily-answer-form > .math-toolbox { flex: 1 0 100%; order: 3; }
+.math-toolbox-search input { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--text); padding: 10px; font: inherit; }
+.math-toolbox-search input:focus { outline: 2px solid var(--green); outline-offset: 2px; }
+.answer-form > .math-toolbox, .daily-answer-form > .math-toolbox { order: 1; }
+.answer-form:has(> .math-toolbox) > button, .daily-answer-form:has(> .math-toolbox) > button { order: 2; }

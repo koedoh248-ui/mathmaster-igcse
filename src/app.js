@@ -1,3 +1,4 @@
+import { installMathToolboxes } from "./math-toolbox.js";
 import { progressBackup, resetLearningProgress, restoreLearningProgress, clearProgressBackup } from "./progress-reset.js";
 import { cloudEnabled, cloudNeedsPassword, cloudResetEmail, cloudSetPassword, initializeCloud, cloudSignIn, cloudSignUp, cloudSignOut, cloudChangePassword, cloudStatus, onCloudStatus, flushCloud, refreshCloud } from "./cloud.js";
 import { currentStreak, clockLabel } from "./local-time.js";
@@ -26,6 +27,7 @@ import { readStore, writeStore, emptyProfile, updateUser, refreshManagedAccount,
 import { expandCurriculumLessons } from "./curriculum.js";
 
 const app = document.querySelector("#app");
+installMathToolboxes(app);
 let store = readStore();
 const isAdminPortal = String(location.pathname || "").endsWith("/admin.html");
 let user = portalUser(store, isAdminPortal);
